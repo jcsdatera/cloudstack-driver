@@ -3,17 +3,19 @@ DATERA CloudStack Driver Repository
 ====================================
 .. list-table:: CloudStack Driver Version with Datera Product and Supported Hypervisor(s)
    :header-rows: 1
-   :class: config-ref-table
+   :class: version-table
 
    * - CloudStack Release
      - Driver Version
      - Capabilities Introduced
      - Supported Datera Product Versions
+     - Supported Hypervisors
      - Driver URL
    * - 4.5.2
      - v1.0
      - Shared Primary Storage
      - 1.1
+     - XenServer 6.2
      - https://github.com/Datera/cloudstack/cloud-plugin-storage-volume-datera-4.5.3-SNAPSHOT.jar
 
 ======================
@@ -42,5 +44,3 @@ Configuration Options
      - (Int) Number of replicas to create of an inode.
    * - ``timeout`` = ``10000``
      - (Int) Number of milliseconds to pause after creating a volume.
-
-
