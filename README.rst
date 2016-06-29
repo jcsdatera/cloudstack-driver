@@ -1,41 +1,46 @@
-======
+====================================
 DATERA CloudStack Driver Repository
-======
-.. list-table:: CloudStack Driver Version with Datera Product and Supported Hypervisor(s) 
-#   :header-rows: 1
-#   :class: version-table
-#
-#   * - CloudStack Release
-#     - Driver Version
-#     - Capabilities Introduced
-#     - Supported Datera Product Versions
-#     - Driver URL
-#   * - 4.5.2
-#     - v1.0
-#     - Shared Primary Storage
-#     - 1.1
-#     - https://github.com/Datera/cloudstack/cloud-plugin-storage-volume-datera-4.5.3-SNAPSHOT.jar
+====================================
+.. list-table:: CloudStack Driver Version with Datera Product and Supported Hypervisor(s)
+   :header-rows: 1
+   :class: config-ref-table
 
-=======
+   * - CloudStack Release
+     - Driver Version
+     - Capabilities Introduced
+     - Supported Datera Product Versions
+     - Driver URL
+   * - 4.5.2
+     - v1.0
+     - Shared Primary Storage
+     - 1.1
+     - https://github.com/Datera/cloudstack/cloud-plugin-storage-volume-datera-4.5.3-SNAPSHOT.jar
+
+======================
 Configuration Options
-=======
+======================
 
 .. list-table:: Description of Datera CloudStack driver configuration options
-  :header-rows: 1
-  :class: config-ref-table
+   :header-rows: 1
+   :class: config-ref-table
 
-  * - Configuration option = Default value
-    - Description
-  * - **[DEFAULT]**
-    -
-  * - ``datera_api_port`` = ``7717``
+   * - Configuration option = Default value
+     - Description
+   * - **[DEFAULT]**
+     -
+   * - ``mgmtIP`` = ``None``
      - (String) Datera API port.
-  * - ``datera_api_version`` = ``2``
-     - (String) Datera API version.
-  * - ``datera_num_replicas`` = ``3``
-     - (String) Number of replicas to create of an inode.
-  * - ``driver_client_cert`` = ``None``
-     - (String) The path to the client certificate for verification, if the driver supports it.
-  * - ``driver_client_cert_key`` = ``None``
-     - (String) The path to the client certificate key for verification, if the driver supports it.
+   * - ``mgmtPort`` = ``7717``
+     - (String) Datera API port.
+   * - ``mgmtUserName`` = ``None``
+     - (String) Datera API user name.
+   * - ``mgmtPassword`` = ``None``
+     - (String) Datera API user password.
+   * - ``networkPoolName`` = ``default``
+     - (String) Datera access network pool name.
+   * - ``replica`` = ``1``
+     - (Int) Number of replicas to create of an inode.
+   * - ``timeout`` = ``10000``
+     - (Int) Number of milliseconds to pause after creating a volume.
+
 
