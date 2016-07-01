@@ -6,12 +6,13 @@ from marvin.cloudstackTestCase import cloudstackTestCase
 
 # Import Integration Libraries
 
-from marvin.lib.base import ServiceOffering, StoragePool
+from marvin.lib.base import (Account, ServiceOffering, DiskOffering,
+                             User, Volume, StoragePool, VirtualMachine)
 
 # common - commonly used methods for all tests are listed here
-from marvin.lib.common import (get_domain, get_zone,
+from marvin.lib.common import (get_domain, get_zone, list_storage_pools,
                                list_hosts, list_clusters,
-                               list_storage_pools)
+                               list_volumes, list_templates)
 
 # utils - utility classes for common cleanup, external library wrappers, etc.
 from marvin.lib.utils import cleanup_resources
@@ -26,7 +27,9 @@ class TestData:
     clusterId = "clusterId"
     computeOffering = "computeoffering"
     displayText = "displaytext"
+    diskOffering = "diskoffering"
     diskSize = "disksize"
+    diskName = "diskName"
     domainId = "domainId"
     hypervisor = "hypervisor"
     login = "login"
@@ -34,15 +37,11 @@ class TestData:
     name = "name"
     newHost = "newHost"
     newHostDisplayName = "newHostDisplayName"
-    osType = "ostype"
+    osName = "ostype"
     password = "password"
     podId = "podid"
     port = "port"
     primaryStorage = "primarystorage"
-    primaryStorage2 = "primarystorage2"
-    primaryStorage3 = "primarystorage3"
-    primaryStorage4 = "primarystorage4"
-    primaryStorage5 = "primaryStorage5"
     provider = "provider"
     scope = "scope"
     Datera = "Datera"
@@ -66,14 +65,6 @@ class TestData:
             "mgmtIP=172.19.2.214;mgmtPort=7718;" +
             "mgmtUserName=admin;mgmtPassword=password;" +
             "replica=3;networkPoolName=default"),
-        self.datear_url_without_replica = (
-            "mgmtIP=172.19.1.214;mgmtPort=7718;" +
-            "mgmtUserName=admin;mgmtPassword=password;" +
-            "networkPoolName=default"),
-        self.datear_url_without_netpool = (
-            "mgmtIP=172.19.2.214;mgmtPort=7718;" +
-            "mgmtUserName=admin;mgmtPassword=password;" +
-            "replica=3"),
         self.testdata = {
             TestData.Datera: {
                 TestData.mvip: "172.19.2.214",
@@ -84,76 +75,59 @@ class TestData:
                 TestData.username: "root",
                 TestData.password: "maple"
             },
+            TestData.account: {
+                "email": "test@example.com",
+                "firstname": "John",
+                "lastname": "Doe",
+                TestData.username: "test",
+                TestData.password: "test"
+            },
+            TestData.user: {
+                "email": "user@example.com",
+                "firstname": "Jane",
+                "lastname": "Doe",
+                TestData.username: "testuser",
+                TestData.password: "password"
+            },
             TestData.primaryStorage: {
                 TestData.name: "datera-%d" % random.randint(0, 100),
                 TestData.scope: "CLUSTER",
                 TestData.url: self.datear_url[0],
                 TestData.provider: "DateraShared",
                 TestData.tags: TestData.storageTag,
-                TestData.capacityIops: 5000,
-                TestData.capacityBytes: 1073741824,
+                TestData.capacityIops: 10000,
+                TestData.capacityBytes: 10737418240,
                 TestData.hypervisor: "XenServer",
                 TestData.podId: 1
             },
-            TestData.primaryStorage2: {
-                TestData.name: "Datera-%d" % random.randint(0, 100),
-                TestData.scope: "CLUSTER",
-                TestData.url: self.datear_url[0],
-                TestData.provider: "DateraShared",
+            TestData.diskOffering: {
+                "name": "Datera_DO",
+                "displaytext": "Datera_DO",
+                "disksize": 1,
+                "miniops": 300,
+                "maxiops": 500,
                 TestData.tags: TestData.storageTag,
-                TestData.capacityIops: 5000,
-                TestData.capacityBytes: 125000000000000,
-                TestData.hypervisor: "XenServer",
-                TestData.podId: 1
+                "storagetype": "shared"
             },
-            TestData.primaryStorage3: {
-                TestData.name: "Datera-%d" % random.randint(0, 100),
-                TestData.scope: "CLUSTER",
-                TestData.url: self.datear_url_without_replica[0],
-                TestData.provider: "DateraShared",
-                TestData.tags: TestData.storageTag,
-                TestData.capacityIops: 5000,
-                TestData.capacityBytes: 1073741824,
-                TestData.hypervisor: "XenServer",
-                TestData.podId: 1
+            TestData.volume_1: {
+                TestData.diskName: "testvolume",
             },
-            TestData.primaryStorage4: {
-                TestData.name: "Datera-%d" % random.randint(0, 100),
-                TestData.scope: "CLUSTER",
-                TestData.url: self.datear_url_without_netpool[0],
-                TestData.provider: "DateraShared",
-                TestData.tags: TestData.storageTag,
-                TestData.capacityIops: 5000,
-                TestData.capacityBytes: 1073741824,
-                TestData.hypervisor: "XenServer",
-                TestData.podId: 1
-            },
-            TestData.primaryStorage5: {
-                TestData.name: "datera-%d" % random.randint(0, 100),
-                TestData.scope: "CLUSTER",
-                TestData.url: self.datear_url[0],
-                TestData.provider: "DateraShared",
-                TestData.tags: TestData.storageTag,
-                TestData.capacityIops: 0,
-                TestData.capacityBytes: 1073741824,
-                TestData.hypervisor: "XenServer",
-                TestData.podId: 1
+            TestData.virtualMachine: {
+                TestData.name: "TestVM",
+                "displayname": "Test VM"
             },
             TestData.computeOffering: {
-                TestData.name: "DATERA",
-                TestData.displayText: (
-                    "DATERA (Min IOPS = 10,000; Max IOPS = 15,000)"),
+                TestData.name: "Datera",
+                TestData.displayText: "datera",
                 "cpunumber": 1,
                 "cpuspeed": 100,
-                "memory": 128,
+                "memory": 512,
                 "storagetype": "shared",
-                "customizediops": False,
                 "miniops": "10000",
                 "maxiops": "15000",
-                "hypervisorsnapshotreserve": 200,
                 TestData.tags: TestData.storageTag
             },
-            TestData.osType: "CentOS 5.6(64-bit) no GUI (XenServer)",
+            TestData.osName: "Debian basic webserver (Xenserver)",
             TestData.zoneId: 1,
             TestData.clusterId: 1,
             TestData.domainId: 1,
@@ -178,6 +152,13 @@ class TestPrimaryStorage(cloudstackTestCase):
         for cluster in list_clusters(cls.apiClient):
             if cluster.name == cls.testdata[TestData.clusterName]:
                 cls.cluster = cluster
+
+        list_template_response = list_templates(cls.apiClient,
+                                                zoneid=cls.zone.id,
+                                                templatefilter='all')
+        for templates in list_template_response:
+            if templates.name == cls.testdata[TestData.osName]:
+                cls.template = templates
         cls.domain = get_domain(cls.apiClient, cls.testdata[TestData.domainId])
         cls.xs_pool_master_ip = list_hosts(
             cls.apiClient, clusterid=cls.cluster.id)
@@ -195,12 +176,37 @@ class TestPrimaryStorage(cloudstackTestCase):
             password=datera[TestData.password],
             hostname=datera[TestData.mvip])
 
+        # Create test account
+        cls.account = Account.create(
+            cls.apiClient,
+            cls.testdata[TestData.account],
+            admin=1
+        )
+
+        # Set up connection to make customized API calls
+        user = User.create(
+            cls.apiClient,
+            cls.testdata[TestData.user],
+            account=cls.account.name,
+            domainid=cls.domain.id
+        )
+
         cls.compute_offering = ServiceOffering.create(
             cls.apiClient,
             cls.testdata[TestData.computeOffering]
         )
 
-        cls._cleanup = [cls.compute_offering]
+        cls.disk_offering = DiskOffering.create(
+            cls.apiClient,
+            cls.testdata[TestData.diskOffering]
+        )
+
+        cls._cleanup = [
+            cls.compute_offering,
+            cls.disk_offering,
+            user,
+            cls.account
+        ]
 
     @classmethod
     def tearDownClass(cls):
@@ -215,23 +221,16 @@ class TestPrimaryStorage(cloudstackTestCase):
 
     def tearDown(self):
         try:
-            primarystorage = self.testdata[TestData.primaryStorage]
             if self.virtual_machine is not None:
                 self.virtual_machine.delete(self.apiClient, True)
 
             cleanup_resources(self.apiClient, self.cleanup)
-            flag = 0
-            for item in self.datera_api.app_instances.list():
-                if item['name'] == primarystorage[TestData.name]:
-                    flag = 1
-            if flag > 0:
-                raise Exception('app instance not deleted.')
         except Exception as e:
             logging.debug("Exception in tearDown(self): %s" % e)
-            raise
 
-    def test01_primary_storage_positive(self):
+    def test09_add_vm_with_datera_storage(self):
         primarystorage = self.testdata[TestData.primaryStorage]
+
         primary_storage = StoragePool.create(
             self.apiClient,
             primarystorage,
@@ -245,126 +244,127 @@ class TestPrimaryStorage(cloudstackTestCase):
             hypervisor=primarystorage[TestData.hypervisor]
         )
 
-        self.cleanup.append(primary_storage)
-        primary_storage_name = "cloudstack-" + primary_storage.id
-        self.assertEqual(
-            any(primary_storage_name == app_instance['name']
-                for app_instance in self.datera_api.app_instances.list()),
-            True, "app instance not created")
         primary_storage_url = primarystorage[TestData.url]
         self._verify_attributes(
             primary_storage.id, primary_storage_url)
 
-    def test02_primary_storage_negative(self):
-        primarystorage2 = self.testdata[TestData.primaryStorage2]
-        primary_storage2 = StoragePool.create(
+        self.cleanup.append(primary_storage)
+        self.virtual_machine = VirtualMachine.create(
             self.apiClient,
-            primarystorage2,
-            scope=primarystorage2[TestData.scope],
+            self.testdata[TestData.virtualMachine],
+            accountid=self.account.name,
             zoneid=self.zone.id,
-            clusterid=self.cluster.id,
-            provider=primarystorage2[TestData.provider],
-            tags=primarystorage2[TestData.tags],
-            capacityiops=primarystorage2[TestData.capacityIops],
-            capacitybytes=primarystorage2[TestData.capacityBytes],
-            hypervisor=primarystorage2[TestData.hypervisor]
+            serviceofferingid=self.compute_offering.id,
+            templateid=self.template.id,
+            domainid=self.domain.id,
+            startvm=True
         )
 
-        self.cleanup.append(primary_storage2)
-        primary_storage_name = "cloudstack-" + primary_storage2.id
-        self.assertEqual(
-            any(primary_storage_name == app_instance['name']
-                for app_instance in self.datera_api.app_instances.list()),
-            True, "app instance not created")
+        self._validate_storage(primary_storage, self.virtual_machine)
 
-        primary_storage_url = primarystorage2[TestData.url]
+    def test10_add_vm_with_datera_storage_and_volume(self):
+        primarystorage = self.testdata[TestData.primaryStorage]
 
-        self._verify_attributes(
-            primary_storage2.id, primary_storage_url)
-
-    def test03_primary_storage_without_replica(self):
-        primarystorage3 = self.testdata[TestData.primaryStorage3]
-
-        primary_storage3 = StoragePool.create(
+        primary_storage = StoragePool.create(
             self.apiClient,
-            primarystorage3,
-            scope=primarystorage3[TestData.scope],
+            primarystorage,
+            scope=primarystorage[TestData.scope],
             zoneid=self.zone.id,
             clusterid=self.cluster.id,
-            provider=primarystorage3[TestData.provider],
-            tags=primarystorage3[TestData.tags],
-            capacityiops=primarystorage3[TestData.capacityIops],
-            capacitybytes=primarystorage3[TestData.capacityBytes],
-            hypervisor=primarystorage3[TestData.hypervisor]
+            provider=primarystorage[TestData.provider],
+            tags=primarystorage[TestData.tags],
+            capacityiops=primarystorage[TestData.capacityIops],
+            capacitybytes=primarystorage[TestData.capacityBytes],
+            hypervisor=primarystorage[TestData.hypervisor]
         )
 
-        self.cleanup.append(primary_storage3)
-        primary_storage_name = "cloudstack-" + primary_storage3.id
-        self.assertEqual(
-            any(primary_storage_name == app_instance['name']
-                for app_instance in self.datera_api.app_instances.list()),
-            True, "app instance not created")
-
-        primary_storage_url = primarystorage3[TestData.url]
-
+        primary_storage_url = primarystorage[TestData.url]
         self._verify_attributes(
-            primary_storage3.id, primary_storage_url)
+            primary_storage.id, primary_storage_url)
 
-    def test11_primary_storage_without_netpool(self):
-        primarystorage4 = self.testdata[TestData.primaryStorage4]
-
-        primary_storage4 = StoragePool.create(
+        self.cleanup.append(primary_storage)
+        self.virtual_machine = VirtualMachine.create(
             self.apiClient,
-            primarystorage4,
-            scope=primarystorage4[TestData.scope],
+            self.testdata[TestData.virtualMachine],
+            accountid=self.account.name,
             zoneid=self.zone.id,
-            clusterid=self.cluster.id,
-            provider=primarystorage4[TestData.provider],
-            tags=primarystorage4[TestData.tags],
-            capacityiops=primarystorage4[TestData.capacityIops],
-            capacitybytes=primarystorage4[TestData.capacityBytes],
-            hypervisor=primarystorage4[TestData.hypervisor]
+            serviceofferingid=self.compute_offering.id,
+            templateid=self.template.id,
+            domainid=self.domain.id,
+            startvm=True
         )
 
-        self.cleanup.append(primary_storage4)
-        primary_storage_name = "cloudstack-" + primary_storage4.id
-        self.assertEqual(
-            any(primary_storage_name == app_instance['name']
-                for app_instance in self.datera_api.app_instances.list()),
-            True, "app instance not created")
+        self._validate_storage(primary_storage, self.virtual_machine)
 
-        primary_storage_url = primarystorage4[TestData.url]
-
-        self._verify_attributes(
-            primary_storage4.id, primary_storage_url)
-
-    def test12_primary_storage_with_zero_iops(self):
-        primarystorage5 = self.testdata[TestData.primaryStorage5]
-
-        primary_storage5 = StoragePool.create(
+        volume = Volume.create(
             self.apiClient,
-            primarystorage5,
-            scope=primarystorage5[TestData.scope],
+            self.testdata[TestData.volume_1],
+            account=self.account.name,
+            domainid=self.domain.id,
             zoneid=self.zone.id,
-            clusterid=self.cluster.id,
-            provider=primarystorage5[TestData.provider],
-            tags=primarystorage5[TestData.tags],
-            capacityiops=primarystorage5[TestData.capacityIops],
-            capacitybytes=primarystorage5[TestData.capacityBytes],
-            hypervisor=primarystorage5[TestData.hypervisor]
+            diskofferingid=self.disk_offering.id
         )
 
-        self.cleanup.append(primary_storage5)
-        primary_storage_name = "cloudstack-" + primary_storage5.id
+        virtual_machine.attach_volume(
+            self.apiClient,
+            volume
+        )
+        storage_pools_response = list_storage_pools(
+            self.apiClient, id=primary_storage.id)
+
+        for key, value in self.xen_session.xenapi.SR.get_all_records().items():
+            if value['name_description'] == primary_storage.id:
+                xen_server_response = value
+
+        self.assertNotEqual(
+            int(storage_pools_response[0].disksizeused),
+            int(xen_server_response['physical_utilisation']))
+
+    def _validate_storage(self, storage, vm):
+        list_volumes_response = list_volumes(
+            self.apiClient, virtualmachineid=vm.id, listall=True)
+
+        self.assertNotEqual(
+            list_volumes_response, None,
+            "'list_volumes_response' should not be equal to 'None'.")
+
+        for volume in list_volumes_response:
+            if volume.type.upper() == "ROOT":
+                volumeData = volume
+                self.assertEqual(volume.storage, storage.name,
+                                 "Volume not created for VM " + str(vm.id))
+        #Verify in cloudstack
+        storage_pools_response = list_storage_pools(
+            self.apiClient, id=storage.id)
+
         self.assertEqual(
-            any(primary_storage_name == app_instance['name']
-                for app_instance in self.datera_api.app_instances.list()),
-            True, "app instance not created")
+            int(volumeData.size),
+            int(storage_pools_response[0].disksizeused),
+            "Allocated disk sizes are not same in volumes and primary stoarge")
 
-        primary_storage_url = primarystorage5[TestData.url]
+        #Verify in datera
+        datera_primarystorage_name = "cloudstack-" + storage.id
+        for instance in self.datera_api.app_instances.list():
+            if instance['name'] == datera_primarystorage_name:
+                app_instance_response = instance
 
-        self._verify_attributes(
-            primary_storage5.id, primary_storage_url)
+        app_instance_response_disk = (
+            app_instance_response['storage_instances']
+            ['storage-1']['volumes']['volume-1']
+            ['capacity_in_use'] * 1073741824)
+        self.assertEqual(
+            int(volumeData.size),
+            int(app_instance_response_disk),
+            "App instance usage size is incorrect")
+
+        #Verify in xen server
+        for key, value in self.xen_session.xenapi.SR.get_all_records().items():
+            if value['name_description'] == storage.id:
+                xen_server_response = value
+        self.assertEqual(
+            int(xen_server_response['physical_utilisation']),
+            int(volumeData.size),
+            "Allocated disk sizes is incorrect in xenserver")
 
     def _verify_attributes(self, primarystorage_id, primary_storage_url):
         #Cloudstack Primary storage pool

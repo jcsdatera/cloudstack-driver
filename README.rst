@@ -16,7 +16,7 @@ DATERA CloudStack Driver Repository
      - Shared Primary Storage
      - 1.1
      - XenServer 6.2
-     - https://github.com/Datera/cloudstack/cloud-plugin-storage-volume-datera-4.5.3-SNAPSHOT.jar
+     - https://raw.githubusercontent.com/Datera/cloudstack-driver/master/cloud-plugin-storage-volume-datera-4.5.2.jar
 
 ======================
 Configuration Options
@@ -31,7 +31,7 @@ Configuration Options
    * - **[DEFAULT]**
      -
    * - ``mgmtIP`` = ``None``
-     - (String) Datera API port.
+     - (String) Datera API management vip.
    * - ``mgmtPort`` = ``7717``
      - (String) Datera API port.
    * - ``mgmtUserName`` = ``None``
@@ -40,7 +40,17 @@ Configuration Options
      - (String) Datera API user password.
    * - ``networkPoolName`` = ``default``
      - (String) Datera access network pool name.
-   * - ``replica`` = ``1``
+   * - ``replica`` = ``3``
      - (Int) Number of replicas to create of an inode.
-   * - ``timeout`` = ``10000``
-     - (Int) Number of milliseconds to pause after creating a volume.
+
+===================
+Configuration Steps
+===================
+
+1. Deploy CloudStack by following the instructions http://docs.cloudstack.apache.org/projects/cloudstack-installation/en/4.5/
+2. Download Datera CloudStack driver from https://raw.githubusercontent.com/Datera/cloudstack-driver/master/cloud-plugin-storage-volume-datera-4.5.2.jar
+3. Save it to /usr/share/cloudstack-management/webapps/client/WEB-INF/lib/
+4. Restart CloudStack management
+```
+$ service cloudstack-management restart
+```

@@ -1,3 +1,4 @@
+#import time
 import logging
 import random
 import XenAPI
@@ -40,9 +41,6 @@ class TestData:
     port = "port"
     primaryStorage = "primarystorage"
     primaryStorage2 = "primarystorage2"
-    primaryStorage3 = "primarystorage3"
-    primaryStorage4 = "primarystorage4"
-    primaryStorage5 = "primaryStorage5"
     provider = "provider"
     scope = "scope"
     Datera = "Datera"
@@ -60,20 +58,14 @@ class TestData:
     zoneId = "zoneid"
     clusterName = "clusterName"
     hostName = "hostname"
+    newCapacityBytes = "update_capacityBytes"
+    newCapacityIops = "capacityIops"
 
     def __init__(self):
-        self.datear_url = (
+        self.datera_url = (
             "mgmtIP=172.19.2.214;mgmtPort=7718;" +
             "mgmtUserName=admin;mgmtPassword=password;" +
             "replica=3;networkPoolName=default"),
-        self.datear_url_without_replica = (
-            "mgmtIP=172.19.1.214;mgmtPort=7718;" +
-            "mgmtUserName=admin;mgmtPassword=password;" +
-            "networkPoolName=default"),
-        self.datear_url_without_netpool = (
-            "mgmtIP=172.19.2.214;mgmtPort=7718;" +
-            "mgmtUserName=admin;mgmtPassword=password;" +
-            "replica=3"),
         self.testdata = {
             TestData.Datera: {
                 TestData.mvip: "172.19.2.214",
@@ -85,56 +77,12 @@ class TestData:
                 TestData.password: "maple"
             },
             TestData.primaryStorage: {
-                TestData.name: "datera-%d" % random.randint(0, 100),
-                TestData.scope: "CLUSTER",
-                TestData.url: self.datear_url[0],
-                TestData.provider: "DateraShared",
-                TestData.tags: TestData.storageTag,
-                TestData.capacityIops: 5000,
-                TestData.capacityBytes: 1073741824,
-                TestData.hypervisor: "XenServer",
-                TestData.podId: 1
-            },
-            TestData.primaryStorage2: {
                 TestData.name: "Datera-%d" % random.randint(0, 100),
                 TestData.scope: "CLUSTER",
-                TestData.url: self.datear_url[0],
+                TestData.url: self.datera_url[0],
                 TestData.provider: "DateraShared",
                 TestData.tags: TestData.storageTag,
-                TestData.capacityIops: 5000,
-                TestData.capacityBytes: 125000000000000,
-                TestData.hypervisor: "XenServer",
-                TestData.podId: 1
-            },
-            TestData.primaryStorage3: {
-                TestData.name: "Datera-%d" % random.randint(0, 100),
-                TestData.scope: "CLUSTER",
-                TestData.url: self.datear_url_without_replica[0],
-                TestData.provider: "DateraShared",
-                TestData.tags: TestData.storageTag,
-                TestData.capacityIops: 5000,
-                TestData.capacityBytes: 1073741824,
-                TestData.hypervisor: "XenServer",
-                TestData.podId: 1
-            },
-            TestData.primaryStorage4: {
-                TestData.name: "Datera-%d" % random.randint(0, 100),
-                TestData.scope: "CLUSTER",
-                TestData.url: self.datear_url_without_netpool[0],
-                TestData.provider: "DateraShared",
-                TestData.tags: TestData.storageTag,
-                TestData.capacityIops: 5000,
-                TestData.capacityBytes: 1073741824,
-                TestData.hypervisor: "XenServer",
-                TestData.podId: 1
-            },
-            TestData.primaryStorage5: {
-                TestData.name: "datera-%d" % random.randint(0, 100),
-                TestData.scope: "CLUSTER",
-                TestData.url: self.datear_url[0],
-                TestData.provider: "DateraShared",
-                TestData.tags: TestData.storageTag,
-                TestData.capacityIops: 0,
+                TestData.capacityIops: 500,
                 TestData.capacityBytes: 1073741824,
                 TestData.hypervisor: "XenServer",
                 TestData.podId: 1
@@ -153,13 +101,14 @@ class TestData:
                 "hypervisorsnapshotreserve": 200,
                 TestData.tags: TestData.storageTag
             },
-            TestData.osType: "CentOS 5.6(64-bit) no GUI (XenServer)",
             TestData.zoneId: 1,
             TestData.clusterId: 1,
             TestData.domainId: 1,
             TestData.url: "172.19.175.174",
             TestData.clusterName: "Cluster-Xen",
-            TestData.hostName: "tlx167.tlx.daterainc.com"
+            TestData.hostName: "tlx167.tlx.daterainc.com",
+            TestData.newCapacityBytes: 2147483648,
+            TestData.newCapacityIops: 1000
         }
 
 
@@ -210,29 +159,9 @@ class TestPrimaryStorage(cloudstackTestCase):
             logging.debug("Exception in tearDownClass(cls): %s" % e)
 
     def setUp(self):
-        self.virtual_machine = None
-        self.cleanup = []
-
-    def tearDown(self):
-        try:
-            primarystorage = self.testdata[TestData.primaryStorage]
-            if self.virtual_machine is not None:
-                self.virtual_machine.delete(self.apiClient, True)
-
-            cleanup_resources(self.apiClient, self.cleanup)
-            flag = 0
-            for item in self.datera_api.app_instances.list():
-                if item['name'] == primarystorage[TestData.name]:
-                    flag = 1
-            if flag > 0:
-                raise Exception('app instance not deleted.')
-        except Exception as e:
-            logging.debug("Exception in tearDown(self): %s" % e)
-            raise
-
-    def test01_primary_storage_positive(self):
         primarystorage = self.testdata[TestData.primaryStorage]
-        primary_storage = StoragePool.create(
+
+        self.primary_storage = StoragePool.create(
             self.apiClient,
             primarystorage,
             scope=primarystorage[TestData.scope],
@@ -244,129 +173,257 @@ class TestPrimaryStorage(cloudstackTestCase):
             capacitybytes=primarystorage[TestData.capacityBytes],
             hypervisor=primarystorage[TestData.hypervisor]
         )
-
-        self.cleanup.append(primary_storage)
-        primary_storage_name = "cloudstack-" + primary_storage.id
-        self.assertEqual(
-            any(primary_storage_name == app_instance['name']
-                for app_instance in self.datera_api.app_instances.list()),
-            True, "app instance not created")
+        self.primary_storage_id = self.primary_storage.id
+        self._primary_storage = [self.primary_storage]
+        self.primary_tag = primarystorage[TestData.tags]
+        self.cleanup = [self.primary_storage]
         primary_storage_url = primarystorage[TestData.url]
-        self._verify_attributes(
-            primary_storage.id, primary_storage_url)
+        self._verify_priamry_storage(
+            self.primary_storage_id, primary_storage_url)
 
-    def test02_primary_storage_negative(self):
-        primarystorage2 = self.testdata[TestData.primaryStorage2]
-        primary_storage2 = StoragePool.create(
-            self.apiClient,
-            primarystorage2,
-            scope=primarystorage2[TestData.scope],
-            zoneid=self.zone.id,
-            clusterid=self.cluster.id,
-            provider=primarystorage2[TestData.provider],
-            tags=primarystorage2[TestData.tags],
-            capacityiops=primarystorage2[TestData.capacityIops],
-            capacitybytes=primarystorage2[TestData.capacityBytes],
-            hypervisor=primarystorage2[TestData.hypervisor]
-        )
+    def tearDown(self):
+        try:
+            if len(self.cleanup) > 0:
+                cleanup_resources(self.apiClient, self.cleanup)
+        except Exception as e:
+            logging.debug("Exception in tearDown(self): %s" % e)
 
-        self.cleanup.append(primary_storage2)
-        primary_storage_name = "cloudstack-" + primary_storage2.id
+    def test04_delete_primary_storage(self):
+        #cleanup_resources(self.apiClient, self._primary_storage)
+        StoragePool.delete(self.primary_storage, self.apiClient)
+        self.cleanup = []
+
+        # Verify in Cloudstack
+        storage_pools_response = list_storage_pools(
+            self.apiClient, clusterid=self.cluster.id)
+        for storage in storage_pools_response:
+            self.assertNotEqual(
+                storage.id,
+                self.primary_storage_id,
+                "Primary storage not deleted")
+
+        # Verify in Datera
+        flag = 0
+        datera_primary_storage_name = "cloudstack-" + self.primary_storage_id
+        for item in self.datera_api.app_instances.list():
+            if item['name'] == datera_primary_storage_name:
+                flag = 1
+        self.assertEqual(flag, 0, "app instance not deleted.")
+
+        # Verify in xenserver
+        for key, value in self.xen_session.xenapi.SR.get_all_records().items():
+            self.assertNotEqual(
+                value['name_description'],
+                self.primary_storage_id,
+                "SR not deleted in xenserver")
+
+        # Verify in sql database
+        command = "select uuid from storage_pool"
+        sql_result = self.dbConnection.execute(command)
+        key = 0
+        for uuid in sql_result:
+            if uuid[0] == self.primary_storage_id:
+                key = 1
         self.assertEqual(
-            any(primary_storage_name == app_instance['name']
-                for app_instance in self.datera_api.app_instances.list()),
-            True, "app instance not created")
+            key, 0, "Primary storage not deleted in database")
 
-        primary_storage_url = primarystorage2[TestData.url]
+    def test05_primary_storage_enable_maintenance_mode(self):
+        StoragePool.enableMaintenance(self.apiClient,
+                                      id=self.primary_storage_id)
 
-        self._verify_attributes(
-            primary_storage2.id, primary_storage_url)
+        # Verify in cloudsatck
+        storage_pools_response = list_storage_pools(
+            self.apiClient, clusterid=self.cluster.id)
+        for storage in storage_pools_response:
+            if storage.id == self.primary_storage_id:
+                storage_pool = storage
 
-    def test03_primary_storage_without_replica(self):
-        primarystorage3 = self.testdata[TestData.primaryStorage3]
+        # Verify in datera
+        datera_primary_storage_name = "cloudstack-" + self.primary_storage_id
+        for instance in self.datera_api.app_instances.list():
+            if instance['name'] == datera_primary_storage_name:
+                datera_instance = instance
 
-        primary_storage3 = StoragePool.create(
-            self.apiClient,
-            primarystorage3,
-            scope=primarystorage3[TestData.scope],
-            zoneid=self.zone.id,
-            clusterid=self.cluster.id,
-            provider=primarystorage3[TestData.provider],
-            tags=primarystorage3[TestData.tags],
-            capacityiops=primarystorage3[TestData.capacityIops],
-            capacitybytes=primarystorage3[TestData.capacityBytes],
-            hypervisor=primarystorage3[TestData.hypervisor]
-        )
+       # Verify in xenserver
+       #for key, value in self.xen_session.xenapi.SR.get_all_records().items():
+       #    if value['name_description'] == self.primary_storage_id:
+       #        xen_sr = value
 
-        self.cleanup.append(primary_storage3)
-        primary_storage_name = "cloudstack-" + primary_storage3.id
+        try:
+            self.assertEqual(
+                storage_pool.state, "Maintenance",
+                "Primary storage not in maintenance mode")
+
+            self.assertEqual(
+                datera_instance["admin_state"], "offline",
+                "app-instance not in offline mode")
+
+           # self.assertEqual(
+           #     set(["forget", "destroy"])
+           #         .issubset(xen_sr["allowed_operations"]),
+           #     True, "Xenserver SR not in offline mode")
+        except Exception as e:
+            StoragePool.cancelMaintenance(
+                self.apiClient, id=self.primary_storage_id)
+            raise e
+
+        StoragePool.cancelMaintenance(self.apiClient,
+                                      id=self.primary_storage_id)
+        StoragePool.delete(self.primary_storage, self.apiClient)
+        self.cleanup = []
+
+    def test06_primary_storage_cancel_maintenance_mode(self):
+        StoragePool.enableMaintenance(self.apiClient,
+                                      id=self.primary_storage_id)
+        StoragePool.cancelMaintenance(self.apiClient,
+                                      id=self.primary_storage_id)
+
+        # Verify in cloudsatck
+        storage_pools_response = list_storage_pools(
+            self.apiClient, clusterid=self.cluster.id)
+        for storage in storage_pools_response:
+            if storage.id == self.primary_storage_id:
+                storage_pool = storage
         self.assertEqual(
-            any(primary_storage_name == app_instance['name']
-                for app_instance in self.datera_api.app_instances.list()),
-            True, "app instance not created")
+            storage_pool.state, "Up",
+            "Primary storage not in up mode")
 
-        primary_storage_url = primarystorage3[TestData.url]
-
-        self._verify_attributes(
-            primary_storage3.id, primary_storage_url)
-
-    def test11_primary_storage_without_netpool(self):
-        primarystorage4 = self.testdata[TestData.primaryStorage4]
-
-        primary_storage4 = StoragePool.create(
-            self.apiClient,
-            primarystorage4,
-            scope=primarystorage4[TestData.scope],
-            zoneid=self.zone.id,
-            clusterid=self.cluster.id,
-            provider=primarystorage4[TestData.provider],
-            tags=primarystorage4[TestData.tags],
-            capacityiops=primarystorage4[TestData.capacityIops],
-            capacitybytes=primarystorage4[TestData.capacityBytes],
-            hypervisor=primarystorage4[TestData.hypervisor]
-        )
-
-        self.cleanup.append(primary_storage4)
-        primary_storage_name = "cloudstack-" + primary_storage4.id
+        # Verify in datera
+        datera_primary_storage_name = "cloudstack-" + self.primary_storage_id
+        for instance in self.datera_api.app_instances.list():
+            if instance['name'] == datera_primary_storage_name:
+                datera_instance = instance
         self.assertEqual(
-            any(primary_storage_name == app_instance['name']
-                for app_instance in self.datera_api.app_instances.list()),
-            True, "app instance not created")
+            datera_instance["admin_state"], "online",
+            "app-instance not in online mode")
 
-        primary_storage_url = primarystorage4[TestData.url]
-
-        self._verify_attributes(
-            primary_storage4.id, primary_storage_url)
-
-    def test12_primary_storage_with_zero_iops(self):
-        primarystorage5 = self.testdata[TestData.primaryStorage5]
-
-        primary_storage5 = StoragePool.create(
-            self.apiClient,
-            primarystorage5,
-            scope=primarystorage5[TestData.scope],
-            zoneid=self.zone.id,
-            clusterid=self.cluster.id,
-            provider=primarystorage5[TestData.provider],
-            tags=primarystorage5[TestData.tags],
-            capacityiops=primarystorage5[TestData.capacityIops],
-            capacitybytes=primarystorage5[TestData.capacityBytes],
-            hypervisor=primarystorage5[TestData.hypervisor]
-        )
-
-        self.cleanup.append(primary_storage5)
-        primary_storage_name = "cloudstack-" + primary_storage5.id
+        # Verify in xenserver
+        for key, value in self.xen_session.xenapi.SR.get_all_records().items():
+            if value['name_description'] == self.primary_storage_id:
+                xen_sr = value
         self.assertEqual(
-            any(primary_storage_name == app_instance['name']
-                for app_instance in self.datera_api.app_instances.list()),
-            True, "app instance not created")
+            set(["forget", "destroy"]).issubset(xen_sr["allowed_operations"]),
+            False, "Xenserver SR in offline mode")
 
-        primary_storage_url = primarystorage5[TestData.url]
+        StoragePool.delete(self.primary_storage, self.apiClient)
+        self.cleanup = []
 
-        self._verify_attributes(
-            primary_storage5.id, primary_storage_url)
+    def test07_update_primary_storage_capacityBytes(self):
+        updatedDiskSize = self.testdata[TestData.newCapacityBytes]
+        StoragePool.update(self.apiClient,
+                           id=self.primary_storage_id,
+                           capacitybytes=updatedDiskSize,
+                           tags=self.primary_tag)
 
-    def _verify_attributes(self, primarystorage_id, primary_storage_url):
+        # Verify in cloudsatck
+        storage_pools_response = list_storage_pools(
+            self.apiClient, clusterid=self.cluster.id)
+        for data in storage_pools_response:
+            if data.id == self.primary_storage_id:
+                storage_pool = data
+
+        self.assertEqual(
+            storage_pool.disksizetotal, updatedDiskSize,
+            "Primary storage not updated")
+
+        # Verify in datera
+        datera_primary_storage_name = "cloudstack-" + self.primary_storage_id
+        for instance in self.datera_api.app_instances.list():
+            if instance['name'] == datera_primary_storage_name:
+                datera_instance = instance
+        app_instance_response_disk_size = (
+            datera_instance['storage_instances']
+            ['storage-1']['volumes']['volume-1']['size'] * 1073741824)
+
+        self.assertEqual(
+            app_instance_response_disk_size, updatedDiskSize,
+            "app-instance not updated")
+
+        # Verify in xenserver
+       #for key, value in self.xen_session.xenapi.SR.get_all_records().items():
+        #    if value['name_description'] == self.primary_storage_id:
+        #        xen_sr = value
+        #Uncomment after xen fix
+        #print xen_sr
+        #print xen_sr['physical_size'], updatedDiskSize
+        #self.assertEqual(
+        #    int(xen_sr['physical_size']) + 12582912, updatedDiskSize,
+        #    "Xen server physical storage not updated")
+
+        StoragePool.delete(self.primary_storage, self.apiClient)
+        self.cleanup = []
+
+    def test08_update_primary_storage_capacityIops(self):
+        updatedIops = self.testdata[TestData.newCapacityIops]
+        StoragePool.update(self.apiClient,
+                           id=self.primary_storage_id,
+                           capacityiops=updatedIops,
+                           tags=self.primary_tag)
+
+        # Verify in cloudsatck
+        storage_pools_response = list_storage_pools(
+            self.apiClient, clusterid=self.cluster.id)
+        for data in storage_pools_response:
+            if data.id == self.primary_storage_id:
+                storage_pool = data
+
+        self.assertEqual(
+            storage_pool.capacityiops, updatedIops,
+            "Primary storage capacityiops not updated")
+
+        # Verify in datera
+        datera_primary_storage_name = "cloudstack-" + self.primary_storage_id
+        for instance in self.datera_api.app_instances.list():
+            if instance['name'] == datera_primary_storage_name:
+                datera_instance = instance
+        app_instance_response_iops = (
+            datera_instance['storage_instances']
+            ['storage-1']['volumes']['volume-1']['performance_policy']
+            ['total_iops_max'])
+
+        self.assertEqual(
+            app_instance_response_iops, updatedIops,
+            "app-instance capacityiops not updated")
+
+        StoragePool.delete(self.primary_storage, self.apiClient)
+        self.cleanup = []
+
+    def test13_update_primary_storage_capacityIops_to_zero(self):
+        updatedIops = 0
+        StoragePool.update(self.apiClient,
+                           id=self.primary_storage_id,
+                           capacityiops=updatedIops,
+                           tags=self.primary_tag)
+
+        # Verify in cloudsatck
+        storage_pools_response = list_storage_pools(
+            self.apiClient, clusterid=self.cluster.id)
+        for data in storage_pools_response:
+            if data.id == self.primary_storage_id:
+                storage_pool = data
+
+        self.assertEqual(
+            storage_pool.capacityiops, updatedIops,
+            "Primary storage capacityiops not updated")
+
+        # Verify in datera
+        datera_primary_storage_name = "cloudstack-" + self.primary_storage_id
+        for instance in self.datera_api.app_instances.list():
+            if instance['name'] == datera_primary_storage_name:
+                datera_instance = instance
+        app_instance_response_iops = (
+            datera_instance['storage_instances']
+            ['storage-1']['volumes']['volume-1']['performance_policy']
+            ['total_iops_max'])
+
+        self.assertEqual(
+            app_instance_response_iops, updatedIops,
+            "app-instance capacityiops not updated")
+
+        StoragePool.delete(self.primary_storage, self.apiClient)
+        self.cleanup = []
+
+    def _verify_priamry_storage(self, primarystorage_id, primary_storage_url):
         #Cloudstack Primary storage pool
         storage_pools_response = list_storage_pools(
             self.apiClient, id=primarystorage_id)
@@ -432,23 +489,12 @@ class TestPrimaryStorage(cloudstackTestCase):
                 int(app_instance_response_replica),
                 "Incorrect replicas count")
 
-        if cs_netPool:
-            cs_netPool = ''.join(cs_netPool).split("=")[1]
-            self.assertEqual(
-                app_instance_response_ippool.split('/')[2],
-                cs_netPool,
-                "Incorrect networkPoolName")
-
-        if not cs_netPool:
-            self.assertEqual(
-                app_instance_response_ippool.split('/')[2],
-                'default',
-                "Incorrect networkPool Name")
         # Verify in sql database
         command = (
             "select status,id  from storage_pool where uuid='" +
             primarystorage_id + "'")
         sql_result = self.dbConnection.execute(command)
+
         self.assertEqual(
             sql_result[0][0], 'Up',
             "Priamry storage not added in database")
@@ -507,3 +553,9 @@ class TestPrimaryStorage(cloudstackTestCase):
             storage_pools_response_iops,
             app_instance_response_iops,
             "IOPS values are incorrect")
+
+        cs_netPool = ''.join(cs_netPool).split("=")[1]
+        self.assertEqual(
+            app_instance_response_ippool.split('/')[2],
+            cs_netPool,
+            "Incorrect networkPoolName")
