@@ -17,7 +17,6 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
-import org.apache.cloudstack.storage.datastore.driver.DateraPrimaryDataStoreDriver;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
@@ -45,7 +44,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 
 public class DateraRestClient {
-    private static final Logger s_logger = Logger.getLogger(DateraPrimaryDataStoreDriver.class);
+    private static final Logger s_logger = Logger.getLogger(DateraRestClient.class);
 
     private Gson gson = new GsonBuilder().create();
     private LoginResponse respLogin = new LoginResponse();
@@ -68,21 +67,101 @@ public class DateraRestClient {
   password = pass;
   doLogin();
  }
+ public List<DateraModel.InitiatorGroup> enumerateInitiatorGroupsEx()
+ {
+     HttpGet getRequest = new HttpGet("/v2/initiator_groups");
+     setHeaders(getRequest);
+     String response = execute(getRequest);
+     return extractInitiatorGroups(response);
+ }
+ private List<DateraModel.InitiatorGroup> extractInitiatorGroups(String response)
+ {
+     if(null == response)
+         return null;
+     List<DateraModel.InitiatorGroup> initiatorGroups = new ArrayList<DateraModel.InitiatorGroup>();
+     GsonBuilder gsonBuilder = new GsonBuilder();
+     Type mapStringObjectType = new TypeToken<Map<String, Object>>() {}.getType();
+     gsonBuilder.registerTypeAdapter(mapStringObjectType, new DateraMapKeysAdapter());
+     Gson gson1 = gsonBuilder.create();
+
+     Map<String, Object> map = gson1.fromJson(response, mapStringObjectType);
+     for (Map.Entry<String, Object> entry : map.entrySet()) {
+         String initiatorGroupJson = entry.getValue().toString();
+         DateraModel.InitiatorGroup initiatorGroup =  gson.fromJson(initiatorGroupJson,DateraModel.InitiatorGroup.class);
+         initiatorGroups.add(initiatorGroup);
+      }
+
+     return initiatorGroups;
+ }
+
+ private boolean isIopsAvailable(String appInstance, String storageInstance, String volumeName){
+     String url = String.format("/v2/app_instances/%s/storage_instances/%s/volumes/%s/performance_policy", appInstance, storageInstance, volumeName);
+     String response = "";
+     HttpGet getRequest = new HttpGet(url);
+     setHeaders(getRequest);
+     response = execute(getRequest);
+     //DateraModel.PerformancePolicy resp = new DateraModel.PerformancePolicy();
+     DateraModel.PerformancePolicy resp = gson.fromJson(response, DateraModel.PerformancePolicy.class);
+     if(resp != null && resp.totalIopsMax != 0){
+        s_logger.info("DateraRestClient.isIopsAvailable : true");
+        return true;
+     }
+     else {
+        DateraModel.DateraError err = gson.fromJson(response, DateraModel.DateraError.class);
+        if(err.message.contains("No data at")){
+           s_logger.info("DateraRestClient.isIopsAvailable : false");
+           return false;
+        }
+     }
+     return true;
+}
 
  public boolean updateQos(String appInstance, String storageInstance, String volumeName, long totalIOPS)
  {
+     String response = "";
      String url = String.format("/v2/app_instances/%s/storage_instances/%s/volumes/%s/performance_policy", appInstance, storageInstance, volumeName);
-        HttpPut putRequest = new HttpPut(url);
-        setHeaders(putRequest);
+     if (totalIOPS == 0){
+         HttpDelete deleteRequest = new HttpDelete(url);
+         setHeaders(deleteRequest);
+         s_logger.info("Removing IOPS from datera storage");
+         response = execute(deleteRequest);
+     } else {
+          if(!isIopsAvailable(appInstance, storageInstance, volumeName)){
+              HttpPost request = new HttpPost(url);
+              DateraModel.PerformancePolicy policy = new DateraModel.PerformancePolicy(totalIOPS);
+              String payload = gson.toJson(policy);
+              setHeaders(request);
+              setPayload(request, payload);
+              s_logger.info("Updating the IOPS for the storage : payload : " + payload);
+              response = execute(request);
+          } else {
+             HttpPut request = new HttpPut(url);
+             DateraModel.PerformancePolicy policy = new DateraModel.PerformancePolicy(totalIOPS);
+             String payload = gson.toJson(policy);
+             setHeaders(request);
+             setPayload(request, payload);
+             s_logger.info("Updating the IOPS for the storage : payload : " + payload);
+             response = execute(request);
+          }
+     }
+     s_logger.info(DateraUtil.LOG_PREFIX + "DateraRestClient.updateQos response : "+ response);
+     DateraModel.PerformancePolicy resp = gson.fromJson(response, DateraModel.PerformancePolicy.class);
 
-        DateraModel.PerformancePolicy policy = new DateraModel.PerformancePolicy(totalIOPS);
-        String payload = gson.toJson(policy);
-        setPayload(putRequest, payload);
-        String response = execute(putRequest);
-        DateraModel.PerformancePolicy resp = gson.fromJson(response, DateraModel.PerformancePolicy.class);
-
-        if(null == resp) return false;
-        return resp.totalIopsMax == totalIOPS ? true : false;
+     if(resp != null && resp.totalIopsMax == totalIOPS){
+         return true;
+     } else if(resp == null){
+         return false;
+     } else {
+         DateraModel.DateraError err = gson.fromJson(response, DateraModel.DateraError.class);
+         if(!isIopsAvailable(appInstance, storageInstance, volumeName)){
+            return true;
+         }
+         s_logger.error(DateraUtil.LOG_PREFIX + "Error while setting up the max IOPS " + err.message + " " + err.erros);
+         if (err.message.contains("No data at")){
+             throw new CloudRuntimeException("No IOPS configured");
+         }
+         throw new CloudRuntimeException(err.message + "\n" + err.erros);
+     }
  }
 
  public DateraModel.AppModel getAppInstanceInfo(String appInstance)
@@ -149,23 +228,32 @@ public class DateraRestClient {
  public boolean setQos(String appInstance, String storageInstance, String volumeName, long totalIOPS)
  {
      String url = String.format("/v2/app_instances/%s/storage_instances/%s/volumes/%s/performance_policy", appInstance, storageInstance, volumeName);
-        HttpPost postRequest = new HttpPost(url);
-        setHeaders(postRequest);
+     HttpPost postRequest = new HttpPost(url);
+     setHeaders(postRequest);
 
-        DateraModel.PerformancePolicy policy = new DateraModel.PerformancePolicy(totalIOPS);
-        String payload = gson.toJson(policy);
-        setPayload(postRequest, payload);
-        String response = execute(postRequest);
-        DateraModel.PerformancePolicy resp = gson.fromJson(response, DateraModel.PerformancePolicy.class);
+     DateraModel.PerformancePolicy policy = new DateraModel.PerformancePolicy(totalIOPS);
+     String payload = gson.toJson(policy);
+     setPayload(postRequest, payload);
+     String response = execute(postRequest);
+     s_logger.info(DateraUtil.LOG_PREFIX + "DateraRestClient.setQos response : "+ response);
+     DateraModel.PerformancePolicy resp = gson.fromJson(response, DateraModel.PerformancePolicy.class);
 
-        if(null == resp) return false;
-        return resp.totalIopsMax == totalIOPS ? true : false;
+     if(resp != null && resp.totalIopsMax == totalIOPS){
+         return true;
+     } else if(resp == null){
+         return false;
+     } else {
+         DateraModel.DateraError err = gson.fromJson(response, DateraModel.DateraError.class);
+         s_logger.error(DateraUtil.LOG_PREFIX + "Error while setting up the max IOPS " + err.message + " " + err.erros);
+         throw new CloudRuntimeException(err.message + "\n" + err.erros);
+     }
  }
  public boolean deleteInitiatorGroup(String groupName)
  {
       HttpDelete deleteRequest = new HttpDelete("/v2/initiator_groups/"+groupName);
       setHeaders(deleteRequest);
       String response = execute(deleteRequest);
+      s_logger.info("DateraRestClient.deleteInitiatorGroup response : " + response);
       DateraModel.GenericResponse resp = gson.fromJson(response, DateraModel.GenericResponse.class);
 
       if(null == resp) return false;
@@ -261,6 +349,7 @@ public class DateraRestClient {
     s_logger.info("DateraRestClient.unregisterInitiator response ="+response);
     DateraModel.GenericResponse resp = gson.fromJson(response, DateraModel.GenericResponse.class);
     if(null == resp) return false;
+    if(null == resp.id) return false;
     return resp.id.equals(iqn) ? true : false;
  }
  public boolean registerInitiator(String labelName, String iqn)
@@ -272,7 +361,7 @@ public class DateraRestClient {
     String payload = gson.toJson(initiator);
     setPayload(postRequest, payload);
     String response = execute(postRequest);
-    s_logger.info("DateraRestClient.registerInitiator response ="+response);
+    s_logger.info("DateraRestClient.registerInitiator response = " + response);
     DateraModel.GenericResponse resp = gson.fromJson(response, DateraModel.GenericResponse.class);
     if(null == resp) return false;
     if(resp.name.equals(CONFLICT_ERROR))
@@ -301,6 +390,7 @@ public class DateraRestClient {
      String payload = gson.toJson(vol);
      setPayload(postRequest,payload);
      String response = execute(postRequest);
+     s_logger.info(DateraUtil.LOG_PREFIX+ "DateraRestClient.createVolume payload : " + payload);
      DateraModel.GenericResponse resp = gson.fromJson(response, DateraModel.GenericResponse.class);
      if(null == resp) return false;
      return resp.name.equals(volName) ? true : false;
@@ -332,7 +422,15 @@ public class DateraRestClient {
  }
  public boolean setAdminState(String appInstance,boolean online)
  {
-  DateraModel.AdminPrivilege prev = new DateraModel.AdminPrivilege( online ? "online" : "offline");
+     DateraModel.AdminPrivilege prev = null;
+     if(online)
+      {
+         prev = new DateraModel.AdminPrivilege("online");
+      }
+     else
+     {
+         prev =  new DateraModel.AdminPrivilege("offline",true);
+     }
 
   HttpPut putRequest = new HttpPut("/v2/app_instances/"+appInstance);
   setHeaders(putRequest);
@@ -364,10 +462,11 @@ private void setPayload(HttpPut request, String payload) {
     String payload = gson.toJson(vol);
 
     setPayload(putRequest, payload);
-     String response = execute(putRequest);
-     DateraModel.GenericResponse resp = gson.fromJson(response,DateraModel.GenericResponse.class);
-     if(null == resp) return false;
-     return resp.name.equals(volumeInstance) ? true : false;
+    String response = execute(putRequest);
+    s_logger.info(DateraUtil.LOG_PREFIX + "DateraRestClient.resizeVolume response : " + response);
+    DateraModel.GenericResponse resp = gson.fromJson(response,DateraModel.GenericResponse.class);
+    if(null == resp) return false;
+    return resp.name.equals(volumeInstance) ? true : false;
  }
 
  public boolean deleteAppInstance(String appInstance)
@@ -375,7 +474,7 @@ private void setPayload(HttpPut request, String payload) {
   HttpDelete deleteRequest = new HttpDelete("/v2/app_instances/"+appInstance);
   setHeaders(deleteRequest);
   String response = execute(deleteRequest);
-
+  s_logger.info(DateraUtil.LOG_PREFIX + "DateraRestClient.deleteAppInstance response : " + response);
   DateraModel.GenericResponse respObj = gson.fromJson(response, DateraModel.GenericResponse.class);
   if(null == respObj) return false;
   return respObj.name.equals(appInstance) ? true : false;
@@ -415,7 +514,7 @@ private void setPayload(HttpPut request, String payload) {
 
   DateraModel.InitiatorGroup intrGroup = new DateraModel.InitiatorGroup(groupName,initiators);
   String payload = gson.toJson(intrGroup);
-
+  s_logger.info(DateraUtil.LOG_PREFIX + "DateraRestClient.createInitiatorGroup payload ="+ payload);
   setPayload(postRequest, payload);
   String response = execute(postRequest);
 
@@ -494,12 +593,12 @@ public List<String> registerInitiators(Map<String,String> initiators)
        networkPoolName = "/access_network_ip_pools/"+networkPoolName;
        String payload = generateVolumePayload(appInstanceName,initiators,initiatorGroups,volumeGB,volReplica,accessControlMode,networkPoolName);
 
-       s_logger.info("DateraRestClient.createVolume payload ="+ payload);
+       s_logger.info(DateraUtil.LOG_PREFIX+ "DateraRestClient.createVolume payload ="+ payload);
        setPayload(postRequest, payload);
 
        String response = execute(postRequest);
 
-       s_logger.info("DateraRestClient.createVolume response ="+ response);
+       s_logger.info(DateraUtil.LOG_PREFIX + "DateraRestClient.createVolume response = " + response);
        AppInstanceInfo resp = gson.fromJson(response, AppInstanceInfo.class);
 
        return resp;
@@ -538,16 +637,19 @@ public List<String> registerInitiators(Map<String,String> initiators)
   }
 
   String resp = execute(postRequest);
-  s_logger.info("DateraRestClient.doLogin response ="+resp);
+
   if(null == resp || resp.isEmpty())
   {
-     throw new RuntimeException(DATERA_LOG_PREFIX+"No response from the datera node");
+     //throw new RuntimeException(DATERA_LOG_PREFIX + "No response from the datera node");
+     throw new RuntimeException(DATERA_LOG_PREFIX + "Logging into the Datera cluster failed, Please check the " +
+          "credentials provided in URL");
   }
   DateraModel.DateraError error = gson.fromJson(resp, DateraModel.DateraError.class);
   if(null != error.name && error.name.equals(AUTH_FAILED_ERROR))
   {
     throw new RuntimeException(DATERA_LOG_PREFIX+"Authentication failure, "+error.message);
   }
+  s_logger.info("DateraRestClient.doLogin succeeded");
 
    respLogin = gson.fromJson(resp, LoginResponse.class);
 

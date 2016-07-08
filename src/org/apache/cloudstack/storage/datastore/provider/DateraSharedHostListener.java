@@ -37,7 +37,7 @@ import com.cloud.storage.dao.StoragePoolHostDao;
 import com.cloud.utils.exception.CloudRuntimeException;
 
 public class DateraSharedHostListener implements HypervisorHostListener {
-    private static final Logger s_logger = Logger.getLogger(DefaultHostListener.class);
+    private static final Logger s_logger = Logger.getLogger(DateraSharedHostListener.class);
 
     @Inject private AgentManager agentMgr;
     @Inject private DataStoreManager dataStoreMgr;

@@ -44,9 +44,11 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
 
+import com.cloud.utils.exception.CloudRuntimeException;
+
 
 @RunWith(MockitoJUnitRunner.class)
-public class DateraRestClientTest {
+public class DateraRestClientTests {
 
     private String MANAGEMENT_IP = "172.19.175.170";
     private String USERNAME = "admin";
@@ -153,6 +155,8 @@ public class DateraRestClientTest {
 		initiators.add("iqn.1994-05.com.xenserver:dc785c10806");
 
         List<String> inits = rest.registerInitiators(initiators);
+        //System.out.println(" LISt of oinits " + rest.getInitiators());
+        inits = rest.getInitiators();
         assertTrue(inits.contains("iqn.2005-03.org.open-iscsi:01cbe94a11") && inits.contains("iqn.1994-05.com.xenserver:dc785c10806"));
         String initGroupName = "test_initgroup_" + UUID.randomUUID().toString();
         assertTrue(rest.createInitiatorGroup(initGroupName, initiators));
@@ -246,7 +250,7 @@ public class DateraRestClientTest {
     public void testEnumerateInitiatorNames() {
     	DateraRestClient client = new DateraRestClient(MANAGEMENT_IP, PORT, USERNAME, PASSWORD);
     	String iqn = "iqn.2005-03.org.open-iscsi:01cbe94a19";
-    	assertTrue(client.registerInitiator("test_create_initiators_1", iqn));
+    	assertTrue(client.registerInitiator("test_initiator_" + UUID.randomUUID().toString(), iqn));
     	List<String> initiators = client.enumerateInitiatorNames();
     	assertTrue(initiators.contains(iqn));
     }
@@ -275,7 +279,7 @@ public class DateraRestClientTest {
         rest.unregisterInitiator(iqn);
     }
     
-    @Test
+    @Test(expected=CloudRuntimeException.class)
     public void testSetQos() {
     	
     	DateraRestClient client = new DateraRestClient(MANAGEMENT_IP, PORT, USERNAME, PASSWORD);
@@ -313,12 +317,13 @@ public class DateraRestClientTest {
     }
     
     @Test
-    public void testregisterInitiatorsWithLabel() {
+    public void testRegisterInitiatorsWithLabel() {
     	
     	DateraRestClient client = new DateraRestClient(MANAGEMENT_IP, PORT, USERNAME, PASSWORD);
     	Map <String, String> initiators = new HashMap<String, String> ();
     	initiators.put("host1", DateraCommon.INITIATOR_1);
     	List<String> inits = client.registerInitiators(initiators);
+    	inits = client.getInitiators();
     	assertTrue(inits.contains(DateraCommon.INITIATOR_1));
     	assertTrue(client.unregisterInitiator(DateraCommon.INITIATOR_1));
     }
