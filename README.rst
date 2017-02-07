@@ -23,6 +23,20 @@ DATERA CloudStack Driver Repository
      - 1.1
      - XenServer 6.5
      - https://raw.githubusercontent.com/Datera/cloudstack-driver/master/cloud-plugin-storage-volume-datera-4.7.2.jar
+   * - 4.7.2
+     - v2.0
+     - Shared Primary Storage
+     - 2.1
+     - XenServer 6.5
+     - CentOS 7.2
+     - https://raw.githubusercontent.com/Datera/cloudstack-driver/master/cloud-plugin-storage-volume-datera-4.7.2-v2.0.jar
+   * - 4.9.2
+     - v2.0
+     - Shared Primary Storage
+     - 2.1
+     - XenServer 6.5
+     - CentOS 7.2
+     - https://raw.githubusercontent.com/Datera/cloudstack-driver/master/cloud-plugin-storage-volume-datera-4.9.0-v2.0.jar
 
 ======================
 Configuration Options
@@ -46,7 +60,7 @@ Configuration Options
      - (String) Datera API user password.
    * - ``networkPoolName`` = ``default``
      - (String) Datera access network pool name.
-   * - ``replica`` = ``3``
+   * - ``replica`` = ``2``
      - (Int) Number of replicas to create of a volume.
 
 ===================
