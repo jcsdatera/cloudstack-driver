@@ -30,6 +30,12 @@ DATERA CloudStack Driver Repository
      - XenServer 6.5
        CentOS 7.2
      - https://raw.githubusercontent.com/Datera/cloudstack-driver/master/cloud-plugin-storage-volume-datera-4.7.2-v2.0.jar
+   * - 4.8.2
+     - v2.0
+     - Dynamic Primary Storage
+     - 2.1
+     - XenServer 6.5
+     - https://raw.githubusercontent.com/Datera/cloudstack-driver/master/cloud-plugin-storage-volume-datera-4.8.2-v2.0.jar
    * - 4.9.2
      - v2.0
      - Dynamic Primary Storage
@@ -50,25 +56,23 @@ Configuration Options
      - Description
    * - **[DEFAULT]**
      -
-   * - ``mgmtIP`` = ``None``
+   * - ``MVIP`` = ``None``
      - (String) Datera API management vip.
-   * - ``mgmtPort`` = ``7717``
-     - (String) Datera API port.
-   * - ``mgmtUserName`` = ``None``
+   * - ``SVIP`` = ``None``
+     - (String) Datera Access vip.
+   * - ``clusterAdminUsername`` = ``None``
      - (String) Datera API user name.
-   * - ``mgmtPassword`` = ``None``
+   * - ``clusterAdminPassword`` = ``None``
      - (String) Datera API user password.
-   * - ``networkPoolName`` = ``default``
-     - (String) Datera access network pool name.
-   * - ``replica`` = ``2``
+   * - ``numReplicas`` = ``2``
      - (Int) Number of replicas to create of a volume.
 
 ===================
 Configuration Steps
 ===================
 
-1. Deploy CloudStack by following the instructions http://docs.cloudstack.apache.org/projects/cloudstack-installation/en/4.5/
-2. Download Datera CloudStack driver from https://raw.githubusercontent.com/Datera/cloudstack-driver/master/cloud-plugin-storage-volume-datera-4.5.2.jar
+1. Deploy CloudStack by following the instructions http://docs.cloudstack.apache.org/projects/cloudstack-installation/en/4.9/
+2. Download Datera CloudStack driver from https://raw.githubusercontent.com/Datera/cloudstack-driver/master/cloud-plugin-storage-volume-datera-4.9.0-v2.0.jar
 3. Save it to 
 
    ``/usr/share/cloudstack-management/webapps/client/WEB-INF/lib/``
