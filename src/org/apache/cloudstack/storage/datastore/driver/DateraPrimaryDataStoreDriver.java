@@ -224,9 +224,8 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     retries--;
                 }
                 //FIXME: Sleep anyways
-                Thread.sleep(9000); // ms
+                Thread.sleep(DateraUtil.POLL_TIMEOUT_MS); // ms
             }
-
             return true;
         } catch (DateraObject.DateraError | UnsupportedEncodingException | InterruptedException dateraError) {
             s_logger.warn(dateraError.getMessage(), dateraError );
@@ -524,6 +523,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
     private DateraObject.AppInstance createVolume(DateraObject.DateraConnection conn, VolumeInfo volumeInfo) {
 
+        String errMsg = null;
         Long storagePoolId = volumeInfo.getPoolId();
 
         Preconditions.checkArgument(volumeInfo != null, "volumeInfo cannot be null");
@@ -541,8 +541,6 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 maxIops = Ints.checkedCast(volumeInfo.getMaxIops());
             }
 
-            s_logger.debug("Datera - Passed maxIops check");
-
             int replicas = getNumReplicas(storagePoolId);
             String volumePlacement = getVolPlacement(storagePoolId);
 
@@ -558,12 +556,11 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         } catch (UnsupportedEncodingException | DateraObject.DateraError e) {
             s_logger.warn("Datera - Failed to create Datera volume");
             e.printStackTrace();
-        } catch (Exception e) {
-            s_logger.warn("Datera - general exception");
-            e.printStackTrace();
-            throw new CloudRuntimeException("Datera - general exception " + e);
+        } catch (Exception ex) {
+            errMsg = ex.getMessage();
+            s_logger.error(errMsg);
         }
-        s_logger.warn("Datera - DateraPrimaryDataStoreDriver.createVolume() returned null");
+        s_logger.error("Datera - DateraPrimaryDataStoreDriver.createVolume() returned null");
         return null;
     }
 
@@ -582,7 +579,6 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
 
             DateraObject.AppInstance appInstance = createVolume(conn, volumeInfo);
-            s_logger.debug("Datera - after createAsync->createVolume()");
 
             Preconditions.checkNotNull(appInstance);
 
