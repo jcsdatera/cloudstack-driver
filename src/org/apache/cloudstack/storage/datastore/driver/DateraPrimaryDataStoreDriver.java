@@ -524,6 +524,13 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     private DateraObject.AppInstance createVolume(DateraObject.DateraConnection conn, VolumeInfo volumeInfo) {
 
         String errMsg = null;
+        int replicas = 0;
+        int maxIops = 0;
+        long volumeSizeBytes = 0L;
+        int volumeSizeGb = 0;
+        String volumePlacement = null;
+        String appInstanceName = null;
+
         Long storagePoolId = volumeInfo.getPoolId();
 
         Preconditions.checkArgument(volumeInfo != null, "volumeInfo cannot be null");
@@ -533,7 +540,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
         try {
 
-            int maxIops = 0;
+            maxIops = 0;
             if (volumeInfo.getMaxIops() == null || volumeInfo.getMaxIops() < 0) {  // We don't care about min iops for now
                 maxIops = Ints.checkedCast(getDefaultMaxIops(storagePoolId));
                 s_logger.debug("Datera - maxIops == null || maxIops < 0 ");
@@ -541,27 +548,37 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 maxIops = Ints.checkedCast(volumeInfo.getMaxIops());
             }
 
-            int replicas = getNumReplicas(storagePoolId);
-            String volumePlacement = getVolPlacement(storagePoolId);
+            replicas = getNumReplicas(storagePoolId);
+            volumePlacement = getVolPlacement(storagePoolId);
 
-            long volumeSizeBytes = getVolumeSizeIncludingHypervisorSnapshotReserve(volumeInfo, _storagePoolDao.findById(storagePoolId));
-            int volumeSizeGb = DateraUtil.bytesToGb(volumeSizeBytes);
+            volumeSizeBytes = getVolumeSizeIncludingHypervisorSnapshotReserve(volumeInfo, _storagePoolDao.findById(storagePoolId));
+            volumeSizeGb = DateraUtil.bytesToGb(volumeSizeBytes);
+            appInstanceName = getAppInstanceName(volumeInfo);
 
             if (volumePlacement==null) {
-                return DateraUtil.createAppInstance(conn, getAppInstanceName(volumeInfo),  volumeSizeGb, maxIops, replicas);
+                s_logger.debug("Datera - Creating app_instance name: " + appInstanceName + " volumeSizeGb: " + String.valueOf(volumeSizeGb)
+                                + " maxIops: "+String.valueOf(maxIops)+ " replicas: "+String.valueOf(replicas));
+                return DateraUtil.createAppInstance(conn, appInstanceName, volumeSizeGb, maxIops, replicas);
             } else {
-                return DateraUtil.createAppInstance(conn, getAppInstanceName(volumeInfo),  volumeSizeGb, maxIops, replicas, volumePlacement);
+                s_logger.debug("Datera - Creating app_instance name: " + appInstanceName + " volumeSizeGb: " + String.valueOf(volumeSizeGb)
+                                + " maxIops: "+String.valueOf(maxIops)+ " replicas: "+String.valueOf(replicas)+" volPlacement: "+volumePlacement);
+                return DateraUtil.createAppInstance(conn, appInstanceName, volumeSizeGb, maxIops, replicas, volumePlacement);
             }
 
-        } catch (UnsupportedEncodingException | DateraObject.DateraError e) {
+        } catch (UnsupportedEncodingException | DateraObject.DateraError ex) {
             s_logger.warn("Datera - Failed to create Datera volume");
-            e.printStackTrace();
+            errMsg = ex.getMessage();
+            s_logger.error("Datera - " + errMsg);
+            s_logger.error("Datera - DateraPrimaryDataStoreDriver.createVolume() returned null");
+            return null;
+
         } catch (Exception ex) {
             errMsg = ex.getMessage();
-            s_logger.error(errMsg);
+            s_logger.error("Datera - " + errMsg);
+            s_logger.error("Datera - DateraPrimaryDataStoreDriver.createVolume() returned null");
+            return null;
         }
-        s_logger.error("Datera - DateraPrimaryDataStoreDriver.createVolume() returned null");
-        return null;
+
     }
 
     @Override
