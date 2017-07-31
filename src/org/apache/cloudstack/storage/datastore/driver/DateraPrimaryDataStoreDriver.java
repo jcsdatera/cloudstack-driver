@@ -507,6 +507,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     private void deleteVolume(DateraObject.DateraConnection conn, VolumeInfo volumeInfo) {
 
         Long storagePoolId = volumeInfo.getPoolId();
+        s_logger.debug("Datera - DateraPrimaryDataStoreDriver.deleteVolume() "+String.valueOf(storagePoolId)+" called");
 
         if (storagePoolId == null) {
             return; // this volume was never assigned to a storage pool, so no SAN volume should exist for it
@@ -585,10 +586,14 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     public void createAsync(DataStore dataStore, DataObject dataObject, AsyncCompletionCallback<CreateCmdResult> callback) {
         String iqn = null;
         String errMsg = null;
-
         String iqnPath = null;
+        s_logger.debug("Datera - DateraPrimaryDataStoreDriver.createAsync() is called");
+
         if (dataObject.getType() == DataObjectType.VOLUME) {
             VolumeInfo volumeInfo = (VolumeInfo) dataObject;
+
+            Preconditions.checkArgument(volumeInfo.getSize() != 0L, "Datera - 'volumeInfo.size()' should not be '0'");
+            s_logger.debug("Datera - dataObject is volume type, volume size is non-zero");
 
             long storagePoolId = dataStore.getId();
 
@@ -646,9 +651,12 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     @Override
     public void deleteAsync(DataStore dataStore, DataObject dataObject, AsyncCompletionCallback<CommandResult> callback) {
         String errMsg = null;
+        s_logger.debug("Datera - DateraPrimaryDataStoreDriver.deleteAsync() is called");
 
         if (dataObject.getType() == DataObjectType.VOLUME) {
             try {
+                s_logger.debug("Datera - dataObject is volume type");
+
                 VolumeInfo volumeInfo = (VolumeInfo)dataObject;
                 long volumeId = volumeInfo.getId();
 
@@ -669,7 +677,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 _storagePoolDao.update(storagePoolId, storagePool);
             }
             catch (Exception ex) {
-                s_logger.debug("Failed to delete volume ", ex);
+                s_logger.debug("Datera - Failed to delete volume ", ex);
 
                 errMsg = ex.getMessage();
             }
