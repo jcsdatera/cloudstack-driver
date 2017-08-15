@@ -80,6 +80,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     private static final Logger s_logger = Logger.getLogger(DateraPrimaryDataStoreDriver.class);
     private static final int s_lockTimeInSeconds = 300;
     private static final int s_lowestHypervisorSnapshotReserve = 10;
+    private static final long defaultVolumeSize = 3362005504L;
 
     @Inject private ClusterDao _clusterDao;
     @Inject private ClusterDetailsDao _clusterDetailsDao;
@@ -361,6 +362,10 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         return Long.parseLong(clusterDefaultMinIops);
     }
 
+    private long getDefaultVolumeSize() {
+        return defaultVolumeSize;
+    }
+
     /**
      * If user doesn't specify the IOPS, use this IOPS
      * @param storagePoolId the primary storage
@@ -493,6 +498,11 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     @Override
     public long getVolumeSizeIncludingHypervisorSnapshotReserve(Volume volume, StoragePool pool) {
         long volumeSize = volume.getSize();
+        if (volumeSize==0) {
+            volumeSize = getDefaultVolumeSize();
+            s_logger.error("Datera - Volume size is 0, setting it to " + String.valueOf(volumeSize));
+        }
+
         Integer hypervisorSnapshotReserve = volume.getHypervisorSnapshotReserve();
 
         if (hypervisorSnapshotReserve != null) {
@@ -554,6 +564,10 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
             volumeSizeBytes = getVolumeSizeIncludingHypervisorSnapshotReserve(volumeInfo, _storagePoolDao.findById(storagePoolId));
             volumeSizeGb = DateraUtil.bytesToGb(volumeSizeBytes);
+            if (volumeSizeGb==0) {
+                s_logger.error("Datera - Volume size is still 0:");
+                return null;
+            }
             appInstanceName = getAppInstanceName(volumeInfo);
 
             if (volumePlacement==null) {
@@ -570,6 +584,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             s_logger.warn("Datera - Failed to create Datera volume");
             errMsg = ex.getMessage();
             s_logger.error("Datera - " + errMsg);
+
             s_logger.error("Datera - DateraPrimaryDataStoreDriver.createVolume() returned null");
             return null;
 
@@ -595,8 +610,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             // Preconditions.checkArgument((volumeInfo.getSize() != 0L),"Datera - Volume size should not be '0'");
 
             if (volumeInfo.getSize() <= 0L){
-                errMsg = "Datera - Volume size should not be '0'";
-                s_logger.warn("Datera - 'volumeInfo.size()' should not be '0'");
+                s_logger.warn("Datera - Volume size should not be '0'");
             } else {
                 s_logger.debug("Datera - dataObject is volume type, volume size is non-zero");
             }
@@ -712,68 +726,6 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
         return false;
     }
-
-    /**
-    @Override
-    public void copyAsync(DataObject srcdata, DataObject destData, AsyncCompletionCallback<CopyCommandResult> callback) {
-        s_logger.debug("Datera - copyAsync was called");
-        DataStore store = destData.getDataStore();
-        if (store.getRole() == DataStoreRole.Primary) {
-            if ((srcdata.getType() == DataObjectType.TEMPLATE && destData.getType() == DataObjectType.TEMPLATE)) {
-                s_logger.debug("Datera - srcdata: Template, destData: Template");
-
-                //For CLVM, we need to copy template to primary storage at all, just fake the copy result.
-                TemplateObjectTO templateObjectTO = new TemplateObjectTO();
-                templateObjectTO.setPath(UUID.randomUUID().toString());
-                templateObjectTO.setSize(srcdata.getSize());
-                templateObjectTO.setPhysicalSize(srcdata.getSize());
-                templateObjectTO.setFormat(Storage.ImageFormat.RAW);
-                CopyCmdAnswer answer = new CopyCmdAnswer(templateObjectTO);
-                CopyCommandResult result = new CopyCommandResult("", answer);
-                callback.complete(result);
-            } else if (srcdata.getType() == DataObjectType.TEMPLATE && destData.getType() == DataObjectType.VOLUME) {
-                s_logger.debug("Datera - srcdata: Template, destData: Volume");
-
-                //For CLVM, we need to pass template on secondary storage to hypervisor
-                String value = configDao.getValue(Config.PrimaryStorageDownloadWait.toString());
-                int _primaryStorageDownloadWait = NumbersUtil.parseInt(value, Integer.parseInt(Config.PrimaryStorageDownloadWait.getDefaultValue()));
-                StoragePoolVO storagePoolVO = primaryStoreDao.findById(store.getId());
-                DataStore imageStore = templateManager.getImageStore(storagePoolVO.getDataCenterId(), srcdata.getId());
-                DataObject srcData = templateDataFactory.getTemplate(srcdata.getId(), imageStore);
-
-                CopyCommand cmd = new CopyCommand(srcData.getTO(), destData.getTO(), _primaryStorageDownloadWait, true);
-                EndPoint ep = epSelector.select(srcData, destData);
-                Answer answer = null;
-                if (ep == null) {
-                    String errMsg = "No remote endpoint to send command, check if host or ssvm is down?";
-                    s_logger.error(errMsg);
-                    answer = new Answer(cmd, false, errMsg);
-                } else {
-                    answer = ep.sendMessage(cmd);
-                }
-                CopyCommandResult result = new CopyCommandResult("", answer);
-                callback.complete(result);
-            }
-        }
-    }
-
-    @Override
-    public boolean canCopy(DataObject srcData, DataObject destData) {
-        s_logger.debug("Datera - canCopy was called");
-
-        //BUG fix for CLOUDSTACK-4618
-        DataStore store = destData.getDataStore();
-        if (store.getRole() == DataStoreRole.Primary && srcData.getType() == DataObjectType.TEMPLATE
-                && (destData.getType() == DataObjectType.TEMPLATE || destData.getType() == DataObjectType.VOLUME)) {
-            StoragePoolVO storagePoolVO = primaryStoreDao.findById(store.getId());
-            if (storagePoolVO != null && storagePoolVO.getPoolType() == Storage.StoragePoolType.CLVM) {
-                return true;
-            }
-        }
-        return false;
-    }
-     **/
-
 
     @Override
     public void takeSnapshot(SnapshotInfo snapshotInfo, AsyncCompletionCallback<CreateCmdResult> callback) {
