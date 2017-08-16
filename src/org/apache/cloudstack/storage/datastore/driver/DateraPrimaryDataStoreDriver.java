@@ -161,6 +161,8 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     @Override
     public boolean grantAccess(DataObject dataObject, Host host, DataStore dataStore) {
 
+        s_logger.debug("Datera - DateraPrimaryDataStoreDriver.grantAccess() called");
+
         Preconditions.checkArgument(dataObject != null, "'dataObject' should not be 'null'");
         Preconditions.checkArgument(host != null, "'host' should not be 'null'");
         Preconditions.checkArgument(dataStore != null, "'dataStore' should not be 'null'");
@@ -229,8 +231,12 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             }
             return true;
         } catch (DateraObject.DateraError | UnsupportedEncodingException | InterruptedException dateraError) {
-            s_logger.warn(dateraError.getMessage(), dateraError );
+            s_logger.warn(dateraError.getMessage(), dateraError);
             throw new CloudRuntimeException("Unable to grant access to volume " + dateraError.getMessage());
+
+        } catch (Exception ex ) {
+            s_logger.error("Datera - DateraPrimaryDataStoreDriver.grantAccess() failed" + ex);
+            throw ex;
         } finally {
             lock.unlock();
             lock.releaseRef();
@@ -303,6 +309,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         if (dataObject == null || host == null || dataStore == null) {
             return;
         }
+        s_logger.debug("Datera - DateraPrimaryDataStoreDriver.revokeAccess() called");
 
         String appInstanceName = getAppInstanceName(dataObject);
         long clusterId = host.getClusterId();
@@ -331,6 +338,8 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     Thread.sleep(DateraUtil.POLL_TIMEOUT_MS);
                     retries--;
                 }
+                s_logger.debug("Datera - DateraPrimaryDataStoreDriver.revokeAccess(): initiatorGroup "+initiatorGroupName+" detached from" + appInstanceName);
+
             }
         } catch (DateraObject.DateraError | UnsupportedEncodingException | InterruptedException dateraError) {
             String errMesg = "Error revoking access for Volume : " + dataObject.getId();
@@ -517,14 +526,18 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     private void deleteVolume(DateraObject.DateraConnection conn, VolumeInfo volumeInfo) {
 
         Long storagePoolId = volumeInfo.getPoolId();
-        s_logger.debug("Datera - DateraPrimaryDataStoreDriver.deleteVolume() "+String.valueOf(storagePoolId)+" called");
+
+        s_logger.debug("Datera - DateraPrimaryDataStoreDriver.deleteVolume() from storagePool "+String.valueOf(storagePoolId)+" called");
 
         if (storagePoolId == null) {
             return; // this volume was never assigned to a storage pool, so no SAN volume should exist for it
         }
 
         try {
-            DateraUtil.deleteAppInstance(conn, getAppInstanceName(volumeInfo));
+            String appInstanceName = getAppInstanceName(volumeInfo);
+            s_logger.debug("Datera - DateraPrimaryDataStoreDriver.deleteVolume(), deleting "+appInstanceName);
+            DateraUtil.deleteAppInstance(conn, appInstanceName);
+
         } catch (UnsupportedEncodingException | DateraObject.DateraError e) {
             String errMesg = "Error deleting app instance for Volume : " + volumeInfo.getId();
             s_logger.warn(errMesg, e);
@@ -622,6 +635,8 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
             Preconditions.checkNotNull(appInstance);
 
+            s_logger.debug("Datera - volume is created ");
+
             iqn = appInstance.getIqn();
             iqnPath = DateraUtil.generateIqnPath(iqn);
 
@@ -646,6 +661,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             _storagePoolDao.update(storagePoolId, storagePool);
 
         } else {
+            s_logger.warn("Not supported dataObject type!");
             errMsg = "Datera - Invalid DataObjectType (" + dataObject.getType() + ") passed to createAsync";
         }
 
@@ -704,7 +720,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             errMsg = deleteSnapshot((SnapshotInfo)dataObject, dataStore.getId());
 
         } else {
-            errMsg = "Invalid DataObjectType (" + dataObject.getType() + ") passed to deleteAsync";
+            errMsg = "Invalid DataObjectType (" + dataObject.getType() + ") passed to deleteAsync()";
         }
 
         CommandResult result = new CommandResult();
@@ -833,6 +849,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
      */
     private String deleteSnapshot(SnapshotInfo snapshotInfo, long storagePoolId) {
         String errMsg = null;
+        s_logger.debug("Datera - deleteSnapshot() was called");
 
         long snapshotId = snapshotInfo.getId();
 
@@ -844,6 +861,8 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             String snapshotAppInstanceName = snapshotDetails.getValue();
 
             DateraObject.AppInstance snapshotAppInstance = DateraUtil.getAppInstance(conn, snapshotAppInstanceName);
+
+            s_logger.debug("Datera - DateraPrimaryDataStoreDriver.deleteSnapshot(), deleting " + snapshotAppInstanceName);
 
             if (snapshotAppInstance == null) {
                 return null;

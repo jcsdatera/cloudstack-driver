@@ -102,6 +102,8 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
 
         PrimaryDataStoreParameters parameters = new PrimaryDataStoreParameters();
 
+        s_logger.debug("Datera - Loading Datera Primary Data Store Driver : " + DateraUtil.DRIVER_VERSION);
+
         // checks if primary datastore is clusterwide. If so, uses the clusterId to set the uuid and then sets the podId and clusterId parameters
         if (clusterId != null) {
             if (podId == null) {
