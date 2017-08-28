@@ -167,80 +167,97 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         Preconditions.checkArgument(host != null, "'host' should not be 'null'");
         Preconditions.checkArgument(dataStore != null, "'dataStore' should not be 'null'");
 
-        long storagePoolId = dataStore.getId();
-
-        DateraObject.DateraConnection conn = DateraUtil.getDateraConnection(storagePoolId, _storagePoolDetailsDao);
-
-        String appInstanceName = getAppInstanceName(dataObject);
-        DateraObject.AppInstance appInstance = getDateraAppInstance(conn, appInstanceName);
-
-        Preconditions.checkArgument(appInstance != null);
-
-        long clusterId = host.getClusterId();
-
-        ClusterVO cluster = _clusterDao.findById(clusterId);
-
-        GlobalLock lock = GlobalLock.getInternLock(cluster.getUuid());
-
-        if (!lock.lock(s_lockTimeInSeconds)) {
-            s_logger.debug("Couldn't lock the DB (in grantAccess) on the following string: " + cluster.getUuid());
-        }
+        long storagePoolId = 0;
+        DateraObject.DateraConnection conn = null;
+        String appInstanceName = null;
+        DateraObject.AppInstance appInstance = null;
+        long clusterId = 0;
+        ClusterVO cluster = null;
+        GlobalLock lock = null;
 
         try {
+            storagePoolId = dataStore.getId();
 
-            DateraObject.InitiatorGroup initiatorGroup = null;
-            String initiatorGroupKey = DateraUtil.getInitiatorGroupKey(storagePoolId);
+            conn = DateraUtil.getDateraConnection(storagePoolId, _storagePoolDetailsDao);
 
-            List<HostVO> hosts = _hostDao.findByClusterId(clusterId);
+            appInstanceName = getAppInstanceName(dataObject);
+            appInstance = getDateraAppInstance(conn, appInstanceName);
 
-            if (!DateraUtil.hostsSupport_iScsi(hosts)) {
-                return false;
-            }
+            Preconditions.checkArgument(appInstance != null);
 
-            // We don't have the initiator group, create one
-            String initiatorGroupName = DateraUtil.INITIATOR_GROUP_PREFIX +  "-" + cluster.getUuid();
+            clusterId = host.getClusterId();
 
-            initiatorGroup = DateraUtil.getInitiatorGroup(conn, initiatorGroupName);
+            cluster = _clusterDao.findById(clusterId);
 
-            if (initiatorGroup == null) {
-
-                initiatorGroup = DateraUtil.createInitiatorGroup(conn, initiatorGroupName);
-                //Save it to the DB
-                ClusterDetailsVO clusterDetail = new ClusterDetailsVO(clusterId, initiatorGroupKey, initiatorGroupName);
-                _clusterDetailsDao.persist(clusterDetail);
-
-            } else {
-                initiatorGroup = DateraUtil.getInitiatorGroup(conn, initiatorGroupName);
-            }
-
-            Preconditions.checkNotNull(initiatorGroup);
-
-            // We create an initiator for every host in this cluster and add it to the initator group
-            addClusterHostsToInitiatorGroup(conn, clusterId, initiatorGroupName);
-
-            //assgin the initiatorgroup to appInstance
-            if (!isInitiatorGroupAssignedToAppInstance(conn, initiatorGroup, appInstance)) {
-                DateraUtil.assignGroupToAppInstance(conn, initiatorGroupName, appInstanceName);
-                int retries = DateraUtil.DEFAULT_RETRIES;
-                while (!isInitiatorGroupAssignedToAppInstance(conn, initiatorGroup, appInstance) && retries > 0) {
-                    Thread.sleep(DateraUtil.POLL_TIMEOUT_MS);
-                    retries--;
-                }
-                //FIXME: Sleep anyways
-                Thread.sleep(DateraUtil.POLL_TIMEOUT_MS); // ms
-            }
-            return true;
-        } catch (DateraObject.DateraError | UnsupportedEncodingException | InterruptedException dateraError) {
-            s_logger.warn(dateraError.getMessage(), dateraError);
-            throw new CloudRuntimeException("Unable to grant access to volume " + dateraError.getMessage());
-
-        } catch (Exception ex ) {
-            s_logger.error("Datera - DateraPrimaryDataStoreDriver.grantAccess() failed" + ex);
+            lock = GlobalLock.getInternLock(cluster.getUuid());
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            s_logger.error("Datera - DateraPrimaryDataStoreDriver.grantAccess() failed", ex);
             throw ex;
-        } finally {
-            lock.unlock();
-            lock.releaseRef();
         }
+
+        if (lock.lock(s_lockTimeInSeconds)) {
+            try {
+
+                DateraObject.InitiatorGroup initiatorGroup = null;
+                String initiatorGroupKey = DateraUtil.getInitiatorGroupKey(storagePoolId);
+
+                List<HostVO> hosts = _hostDao.findByClusterId(clusterId);
+
+                if (!DateraUtil.hostsSupport_iScsi(hosts)) {
+                    return false;
+                }
+
+                // We don't have the initiator group, create one
+                String initiatorGroupName = DateraUtil.INITIATOR_GROUP_PREFIX + "-" + cluster.getUuid();
+
+                initiatorGroup = DateraUtil.getInitiatorGroup(conn, initiatorGroupName);
+
+                if (initiatorGroup == null) {
+
+                    initiatorGroup = DateraUtil.createInitiatorGroup(conn, initiatorGroupName);
+                    //Save it to the DB
+                    ClusterDetailsVO clusterDetail = new ClusterDetailsVO(clusterId, initiatorGroupKey, initiatorGroupName);
+                    _clusterDetailsDao.persist(clusterDetail);
+
+                } else {
+                    initiatorGroup = DateraUtil.getInitiatorGroup(conn, initiatorGroupName);
+                }
+
+                Preconditions.checkNotNull(initiatorGroup);
+
+                // We create an initiator for every host in this cluster and add it to the initator group
+                addClusterHostsToInitiatorGroup(conn, clusterId, initiatorGroupName);
+
+                //assgin the initiatorgroup to appInstance
+                if (!isInitiatorGroupAssignedToAppInstance(conn, initiatorGroup, appInstance)) {
+                    DateraUtil.assignGroupToAppInstance(conn, initiatorGroupName, appInstanceName);
+                    int retries = DateraUtil.DEFAULT_RETRIES;
+                    while (!isInitiatorGroupAssignedToAppInstance(conn, initiatorGroup, appInstance) && retries > 0) {
+                        Thread.sleep(DateraUtil.POLL_TIMEOUT_MS);
+                        retries--;
+                    }
+                    //FIXME: Sleep anyways
+                    Thread.sleep(DateraUtil.POLL_TIMEOUT_MS); // ms
+                }
+                return true;
+            } catch (DateraObject.DateraError | UnsupportedEncodingException | InterruptedException dateraError) {
+                s_logger.warn(dateraError.getMessage(), dateraError);
+                throw new CloudRuntimeException("Unable to grant access to volume " + dateraError.getMessage());
+
+            } catch (Exception ex) {
+                s_logger.error("Datera - DateraPrimaryDataStoreDriver.grantAccess() failed", ex);
+                throw ex;
+            } finally {
+                lock.unlock();
+                lock.releaseRef();
+            }
+
+        } else {
+            s_logger.debug("Couldn't lock the DB (in grantAccess) on the following string: " + cluster.getUuid());
+            return false;
+        }
+
     }
 
     private void addClusterHostsToInitiatorGroup(DateraObject.DateraConnection conn, long clusterId, String initiatorGroupName) throws DateraObject.DateraError, UnsupportedEncodingException {

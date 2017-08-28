@@ -292,6 +292,7 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
 
     @Override
     public boolean deleteDataStore(DataStore dataStore) {
+        s_logger.debug("Datera - DateraPrimaryDataStoreLifeCycle.deleteDataStore() called");
 
         List<StoragePoolHostVO> hostPoolRecords = _storagePoolHostDao.listByPoolId(dataStore.getId());
 
@@ -299,10 +300,10 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
 
         if (hostPoolRecords.size() > 0 ) {
             hypervisorType = getHypervisorType(hostPoolRecords.get(0).getHostId());
-        }
 
-        if (!isSupportedHypervisorType(hypervisorType)) {
-            throw new CloudRuntimeException(hypervisorType + " is not a supported hypervisor type.");
+            if (!isSupportedHypervisorType(hypervisorType)) {
+                throw new CloudRuntimeException(hypervisorType + " is not a supported hypervisor type.");
+            }
         }
 
         List<SnapshotVO> lstSnapshots = _snapshotDao.listAll();
