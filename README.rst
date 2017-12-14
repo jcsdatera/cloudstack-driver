@@ -5,18 +5,18 @@ DATERA CloudStack Driver Repository
    :header-rows: 1
    :class: version-table
 
-      * - CloudStack Release
-        - Driver Version
-        - Capabilities Introduced
-        - Supported Datera Product Versions
-        - Supported Hypervisors
-        - Driver URL
-      * - 4.5.2
-        - v1.0
-        - Shared Primary Storage
-        - 1.1
-        - XenServer 6.2
-        - https://raw.githubusercontent.com/Datera/cloudstack-driver/master/cloud-plugin-storage-volume-datera-4.5.2.jar
+   * - CloudStack Release
+     - Driver Version
+     - Capabilities Introduced
+     - Supported Datera Product Versions
+     - Supported Hypervisors
+     - Driver URL
+   * - 4.5.2
+     - v1.0
+     - Shared Primary Storage
+     - 1.1
+     - XenServer 6.2
+     - https://raw.githubusercontent.com/Datera/cloudstack-driver/master/cloud-plugin-storage-volume-datera-4.5.2.jar
    * - 4.7.2
      - v1.0
      - Shared Primary Storage
@@ -58,9 +58,9 @@ Configuration Options
    :header-rows: 1
    :class: config-ref-table
 
-      * - Configuration option = Default value
-        - Description
-      * - ``MVIP`` = ``None``
+   * - Configuration option = Default value
+     - Description
+   * - ``MVIP`` = ``None``
      - (String) Datera API management vip.
    * - ``SVIP`` = ``None``
      - (String) Datera Access vip.
