@@ -26,12 +26,12 @@ DATERA CloudStack Driver Repository
    * - 4.7.2
      - v2.0.2
      - Dynamic Primary Storage
-     - 2.1
-     - XenServer 6.5 / 7.0
+     - 2.2 , 3.0
+     - XenServer 6.5 , 7.0
        CentOS 7.2
      - https://raw.githubusercontent.com/Datera/cloudstack-driver/4.7.2-v2.0.2/cloud-plugin-storage-volume-datera-4.7.2-v2.0.2.jar
    * - 4.8.2
-     - v2.0
+     - v2.0 , 3.0
      - Dynamic Primary Storage
      - 2.1
      - XenServer 6.5
