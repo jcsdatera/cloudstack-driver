@@ -17,10 +17,14 @@
 
 package org.apache.cloudstack.storage.datastore.util;
 
+import com.cloud.dc.ClusterDetailsDao;
+import com.cloud.dc.ClusterDetailsVO;
 import com.cloud.host.Host;
 import com.cloud.host.HostVO;
+import com.cloud.host.dao.HostDao;
 import com.cloud.utils.StringUtils;
 import com.cloud.utils.exception.CloudRuntimeException;
+import com.google.common.base.Preconditions;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
@@ -51,6 +55,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
+import javax.inject.Inject;
+
 
 public class DateraUtil {
 
@@ -58,7 +64,7 @@ public class DateraUtil {
     private static final String API_VERSION = "v2";
 
     public static final String PROVIDER_NAME = "Datera";
-    public static final String DRIVER_VERSION = "4.7.2-v2.0.2";
+    public static final String DRIVER_VERSION = "4.7.2-v2.0.3";
 
     private static final String HEADER_AUTH_TOKEN = "auth-token";
     private static final String HEADER_CONTENT_TYPE = "Content-type";
@@ -101,6 +107,12 @@ public class DateraUtil {
     private String password;
 
     private static final String SCHEME_HTTP = "http";
+
+    @Inject
+    private static HostDao s_hostDao;
+    @Inject
+    private static ClusterDetailsDao s_clusterDetailsDao;
+
 
     public DateraUtil(String managementIp, int managementPort, String username, String password) {
         this.managementPort = managementPort;
@@ -749,5 +761,108 @@ public class DateraUtil {
         return tokens[1].trim();
     }
 
+
+    public static boolean isInitiatorGroupAssignedToAppInstance(DateraObject.DateraConnection conn, DateraObject.InitiatorGroup initiatorGroup, DateraObject.AppInstance appInstance)
+            throws DateraObject.DateraError
+    {
+        Map<String, DateraObject.InitiatorGroup> assignedInitiatorGroups = getAppInstanceInitiatorGroups(conn, appInstance.getName());
+
+        Preconditions.checkNotNull(assignedInitiatorGroups);
+        for (DateraObject.InitiatorGroup ig : assignedInitiatorGroups.values()) {
+            if (initiatorGroup.getName().equals(ig.getName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static DateraObject.AppInstance getDateraAppInstance(DateraObject.DateraConnection conn, String appInstanceName)
+    {
+        DateraObject.AppInstance appInstance = null;
+        try
+        {
+            appInstance = getAppInstance(conn, appInstanceName);
+        }
+        catch (DateraObject.DateraError dateraError)
+        {
+            s_logger.warn("Error getting appInstance " + appInstanceName, dateraError);
+            throw new CloudRuntimeException(dateraError.getMessage());
+        }
+        if (appInstance == null) {
+            throw new CloudRuntimeException("App instance not found " + appInstanceName);
+        }
+        return appInstance;
+    }
+
+    public static boolean attachVolume(DateraObject.DateraConnection conn, long storagePoolId, long clusterId, String appInstanceName)
+    {
+        try
+        {
+            DateraObject.InitiatorGroup initiatorGroup = null;
+            String initiatorGroupKey = getInitiatorGroupKey(storagePoolId);
+            DateraObject.AppInstance appInstance = getDateraAppInstance(conn, appInstanceName);
+
+            List<HostVO> hosts = s_hostDao.findByClusterId(Long.valueOf(clusterId));
+            if (!hostsSupport_iScsi(hosts)) {
+                return false;
+            }
+            String initiatorGroupName = "CS-InitiatorGroup-" + clusterId;
+
+            initiatorGroup = getInitiatorGroup(conn, initiatorGroupName);
+            if (initiatorGroup == null)
+            {
+                initiatorGroup = createInitiatorGroup(conn, initiatorGroupName);
+
+                ClusterDetailsVO clusterDetail = new ClusterDetailsVO(clusterId, initiatorGroupKey, initiatorGroupName);
+                s_clusterDetailsDao.persist(clusterDetail);
+            }
+            else
+            {
+                initiatorGroup = getInitiatorGroup(conn, initiatorGroupName);
+            }
+            Preconditions.checkNotNull(initiatorGroup);
+
+            addClusterHostsToInitiatorGroup(conn, clusterId, initiatorGroupName);
+            if (!isInitiatorGroupAssignedToAppInstance(conn, initiatorGroup, appInstance))
+            {
+                assignGroupToAppInstance(conn, initiatorGroupName, appInstanceName);
+                int retries = 3;
+                while ((!isInitiatorGroupAssignedToAppInstance(conn, initiatorGroup, appInstance)) && (retries > 0))
+                {
+                    Thread.sleep(3000L);
+                    retries--;
+                }
+                Thread.sleep(3000L);
+            }
+            return true;
+        }
+        catch (DateraObject.DateraError|UnsupportedEncodingException|InterruptedException dateraError)
+        {
+            s_logger.warn(dateraError.getMessage(), dateraError);
+            throw new CloudRuntimeException("Unable to grant access to volume " + dateraError.getMessage());
+        }
+    }
+
+    public static void addClusterHostsToInitiatorGroup(DateraObject.DateraConnection conn, long clusterId, String initiatorGroupName)
+            throws DateraObject.DateraError, UnsupportedEncodingException
+    {
+        List<HostVO> clusterHosts = s_hostDao.findByClusterId(Long.valueOf(clusterId));
+        DateraObject.InitiatorGroup initiatorGroup = getInitiatorGroup(conn, initiatorGroupName);
+        for (HostVO host : clusterHosts)
+        {
+            String iqn = host.getStorageUrl();
+
+            DateraObject.Initiator initiator = getInitiator(conn, iqn);
+            if (initiator == null)
+            {
+                String initiatorName = "CS-Initiator-" + host.getUuid();
+                initiator = createInitiator(conn, initiatorName, iqn);
+            }
+            Preconditions.checkNotNull(initiator);
+            if (!isInitiatorPresentInGroup(initiator, initiatorGroup)) {
+                addInitiatorToGroup(conn, initiator.getPath(), initiatorGroupName);
+            }
+        }
+    }
 
 }

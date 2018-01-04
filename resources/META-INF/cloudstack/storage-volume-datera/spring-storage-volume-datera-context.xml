@@ -29,5 +29,7 @@
 
     <bean id="dateraDataStoreProvider"
         class="org.apache.cloudstack.storage.datastore.provider.DateraPrimaryDataStoreProvider" />
+    <bean id="dateraSharedDataStoreProvider"
+          class="org.apache.cloudstack.storage.datastore.provider.DateraSharedPrimaryDataStoreProvider" />
 
 </beans>
