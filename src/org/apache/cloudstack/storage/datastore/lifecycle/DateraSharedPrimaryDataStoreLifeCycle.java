@@ -31,7 +31,7 @@ import com.cloud.host.HostVO;
 import com.cloud.host.dao.HostDao;
 import com.cloud.hypervisor.Hypervisor.HypervisorType;
 import com.cloud.resource.ResourceManager;
-import com.cloud.storage.SnapshotVO;
+//import com.cloud.storage.SnapshotVO;
 import com.cloud.storage.Storage.StoragePoolType;
 import com.cloud.storage.StorageManager;
 import com.cloud.storage.StoragePool;
@@ -39,7 +39,7 @@ import com.cloud.storage.StoragePoolAutomation;
 import com.cloud.storage.StoragePoolHostVO;
 import com.cloud.storage.dao.SnapshotDao;
 import com.cloud.storage.dao.SnapshotDetailsDao;
-import com.cloud.storage.dao.SnapshotDetailsVO;
+//import com.cloud.storage.dao.SnapshotDetailsVO;
 import com.cloud.storage.dao.StoragePoolHostDao;
 import com.cloud.utils.StringUtils;
 import com.cloud.utils.db.GlobalLock;
@@ -139,7 +139,7 @@ public class DateraSharedPrimaryDataStoreLifeCycle implements PrimaryDataStoreLi
                 throw new CloudRuntimeException("The Zone ID must be specified.");
             }
             ClusterVO cluster = (ClusterVO)this._clusterDao.findById(clusterId);
-            uuid = "DateraShared_" + cluster.getUuid() + "_" + storageVip + "_" + clusterAdminUsername + "_" + numReplicas + "_" + volPlacement;
+            uuid = "DateraShared_" + clusterId + "_" + storageVip + "_" + clusterAdminUsername + "_" + numReplicas + "_" + volPlacement;
             s_logger.debug("Setting Datera cluster-wide primary storage uuid to " + uuid);
             parameters.setPodId(podId);
             parameters.setClusterId(clusterId);
@@ -151,6 +151,7 @@ public class DateraSharedPrimaryDataStoreLifeCycle implements PrimaryDataStoreLi
         }
         else
         {
+            s_logger.debug("Datera - clusterId is null");
             throw new CloudRuntimeException("Zone wide scope is not supported in Datera shared primary storage driver");
         }
 
@@ -224,10 +225,11 @@ public class DateraSharedPrimaryDataStoreLifeCycle implements PrimaryDataStoreLi
         details.put("numReplicas", String.valueOf(numReplicas));
         details.put("volPlacement", volPlacement);
 
+        // this adds a row in the db table : cloud.storage_pool table for each primary storage
         DataStore dataStore = this.dataStoreHelper.createPrimaryDataStore(parameters);
 
         long storagePoolId = dataStore.getId();
-        Preconditions.checkNotNull(Long.valueOf(storagePoolId));
+        Preconditions.checkNotNull(Long.valueOf(storagePoolId), "storagePoolId should not be null");
 
         String iqn = "";
         try
@@ -258,10 +260,10 @@ public class DateraSharedPrimaryDataStoreLifeCycle implements PrimaryDataStoreLi
             parameters.setPort(0);
             parameters.setPath(path);
 
-            details.put("datastoreName", datastore);
-            details.put("iqn", iqn);
-            details.put("sVip", storageVip);
-            details.put("sPort", String.valueOf(storagePort));
+            details.put(DateraUtil.DATASTORE_NAME, datastore);
+            details.put(DateraUtil.IQN, iqn);
+            details.put(DateraUtil.STORAGE_VIP, storageVip);
+            details.put(DateraUtil.STORAGE_PORT, String.valueOf(storagePort));
         }
         else
         {
@@ -289,9 +291,10 @@ public class DateraSharedPrimaryDataStoreLifeCycle implements PrimaryDataStoreLi
                 .getPodId(), primaryDataStoreInfo.getDataCenterId());
         if (allHosts.isEmpty())
         {
+            // TODO: Delete Datera appInstance
             this.storagePoolDao.expunge(Long.valueOf(primaryDataStoreInfo.getId()));
 
-            throw new CloudRuntimeException("No host up to associate a storage pool with in cluster " + primaryDataStoreInfo.getClusterId());
+            throw new CloudRuntimeException("No host up to associate a storage pool within the cluster " + primaryDataStoreInfo.getClusterId());
         }
         List<HostVO> poolHosts = new ArrayList();
         for (HostVO host : allHosts) {
@@ -309,6 +312,7 @@ public class DateraSharedPrimaryDataStoreLifeCycle implements PrimaryDataStoreLi
         if (poolHosts.isEmpty())
         {
             s_logger.warn("No host can access storage pool '" + primaryDataStoreInfo + "' on cluster '" + primaryDataStoreInfo.getClusterId() + "'.");
+            // TODO: Delete Datera appInstance
 
             this.storagePoolDao.expunge(Long.valueOf(primaryDataStoreInfo.getId()));
 
@@ -348,27 +352,111 @@ public class DateraSharedPrimaryDataStoreLifeCycle implements PrimaryDataStoreLi
     {
         s_logger.debug("Datera - DateraSharedPrimaryDataStoreLifeCycle.deleteDataStore() called");
 
-        List<StoragePoolHostVO> hostPoolRecords = this._storagePoolHostDao.listByPoolId(dataStore.getId());
+        List<StoragePoolHostVO> hostPoolRecords = _storagePoolHostDao.listByPoolId(dataStore.getId());
 
         HypervisorType hypervisorType = null;
-        if (hostPoolRecords.size() > 0)
-        {
-            hypervisorType = getHypervisorType(((StoragePoolHostVO)hostPoolRecords.get(0)).getHostId());
-            if (!isSupportedHypervisorType(hypervisorType)) {
-                throw new CloudRuntimeException(hypervisorType + " is not a supported hypervisor type.");
+
+        if (hostPoolRecords.size() > 0 ) {
+            hypervisorType = getHypervisorType(hostPoolRecords.get(0).getHostId());
+        }
+
+        if (!isSupportedHypervisorType(hypervisorType)) {
+            throw new CloudRuntimeException(hypervisorType + " is not a supported hypervisor type.");
+        }
+
+        StoragePool storagePool = (StoragePool)dataStore;
+        StoragePoolVO storagePoolVO = _primaryDataStoreDao.findById(storagePool.getId());
+        List<VMTemplateStoragePoolVO> unusedTemplatesInPool = _tmpltMgr.getUnusedTemplatesInPool(storagePoolVO);
+
+        for (VMTemplateStoragePoolVO templatePoolVO : unusedTemplatesInPool) {
+            _tmpltMgr.evictTemplateFromStoragePool(templatePoolVO);
+        }
+
+        Long clusterId = null;
+
+        for (StoragePoolHostVO host : hostPoolRecords) {
+            DeleteStoragePoolCommand deleteCmd = new DeleteStoragePoolCommand(storagePool);
+
+            if (HypervisorType.VMware.equals(hypervisorType)) {
+                deleteCmd.setRemoveDatastore(true);
+
+                Map<String, String> details = new HashMap<String, String>();
+
+                StoragePoolDetailVO storagePoolDetail = _storagePoolDetailsDao.findDetail(storagePool.getId(), DateraUtil.DATASTORE_NAME);
+
+                details.put(DeleteStoragePoolCommand.DATASTORE_NAME, storagePoolDetail.getValue());
+
+                storagePoolDetail = _storagePoolDetailsDao.findDetail(storagePool.getId(), DateraUtil.IQN);
+
+                details.put(DeleteStoragePoolCommand.IQN, storagePoolDetail.getValue());
+
+                storagePoolDetail = _storagePoolDetailsDao.findDetail(storagePool.getId(), DateraUtil.STORAGE_VIP);
+
+                details.put(DeleteStoragePoolCommand.STORAGE_HOST, storagePoolDetail.getValue());
+
+                storagePoolDetail = _storagePoolDetailsDao.findDetail(storagePool.getId(), DateraUtil.STORAGE_PORT);
+
+                details.put(DeleteStoragePoolCommand.STORAGE_PORT, storagePoolDetail.getValue());
+
+                deleteCmd.setDetails(details);
+            }
+
+            final Answer answer = _agentMgr.easySend(host.getHostId(), deleteCmd);
+
+            if (answer != null && answer.getResult()) {
+                s_logger.info("Successfully deleted storage pool using Host ID " + host.getHostId());
+
+                HostVO hostVO = _hostDao.findById(host.getHostId());
+
+                if (hostVO != null) {
+                    clusterId = hostVO.getClusterId();
+                }
+
+                break;
+            }
+            else {
+                s_logger.error("Failed to delete storage pool using Host ID " + host.getHostId() + ": " + answer.getResult());
             }
         }
+
         List<SnapshotVO> lstSnapshots = this._snapshotDao.listAll();
         if (lstSnapshots != null) {
-            for (SnapshotVO snapshot : lstSnapshots)
-            {
-                SnapshotDetailsVO snapshotDetails = (SnapshotDetailsVO)this._snapshotDetailsDao.findDetail(snapshot.getId(), "DateraStoragePoolId");
+            for (SnapshotVO snapshot : lstSnapshots) {
+                SnapshotDetailsVO snapshotDetails = (SnapshotDetailsVO) this._snapshotDetailsDao.findDetail(snapshot.getId(), "DateraStoragePoolId");
                 if ((snapshotDetails != null) && (snapshotDetails.getValue() != null) && (Long.parseLong(snapshotDetails.getValue()) == dataStore.getId())) {
                     throw new CloudRuntimeException("This primary storage cannot be deleted because it currently contains one or more snapshots.");
                 }
             }
         }
-        return this.dataStoreHelper.deletePrimaryDataStore(dataStore);
+
+        if (clusterId != null) {
+            //remove initiator from the storage
+            //unregister the initiators or remove the initiator group
+            ClusterVO cluster = _clusterDao.findById(clusterId);
+            GlobalLock lock = GlobalLock.getInternLock(cluster.getUuid());
+
+            if(!lock.lock(DateraUtil.LOCK_TIME_IN_SECOND)){
+                String err = DateraUtil.LOG_PREFIX+" Deleteing storage could not lock on : "+cluster.getUuid();
+                throw new CloudRuntimeException(err);
+            }
+            try{
+
+                if(isDateraSupported(hypervisorType)) {
+                    // The CloudStack operation must continue even of the Datera Side operation does not succeed
+                    deleteVolume(dataStore);
+                }
+            }
+            catch(Exception ex){
+                //do not throw any exception here
+            }
+            finally{
+                lock.unlock();
+                lock.releaseRef();
+            }
+
+        }
+
+        return _primaryDataStoreHelper.deletePrimaryDataStore(dataStore);
     }
 
     @Override
@@ -501,6 +589,29 @@ public class DateraSharedPrimaryDataStoreLifeCycle implements PrimaryDataStoreLi
         return null;
     }
 
+
+    private void deleteVolume(DateraObject.DateraConnection conn, DataStore dataStore) {
+
+        Long storagePoolId = dataStore.getId();
+
+        s_logger.debug("Datera - DateraSharedPrimaryDataStoreDriver.deleteVolume() with "+String.valueOf(storagePoolId)+" called");
+
+        if (storagePoolId == null) {
+            return; // this volume was never assigned to a storage pool, so no SAN volume should exist for it
+        }
+
+        try {
+            String appInstanceName = getAppInstanceName(volumeInfo);
+            s_logger.debug("Datera - DateraSharedPrimaryDataStoreDriver.deleteVolume(), deleting "+appInstanceName);
+            DateraUtil.deleteAppInstance(conn, appInstanceName);
+
+        } catch (UnsupportedEncodingException | DateraObject.DateraError e) {
+            String errMesg = "Error deleting app instance for storagePool : " + String.valueOf(storagePoolId);
+            s_logger.warn(errMesg, e);
+            throw new CloudRuntimeException(errMesg);
+        }
+    }
+
     private long getDefaultMaxIops(long storagePoolId)
     {
         StoragePoolDetailVO storagePoolDetail = (StoragePoolDetailVO)this._storagePoolDetailsDao.findDetail(storagePoolId, "clusterDefaultMaxIops");
@@ -530,11 +641,14 @@ public class DateraSharedPrimaryDataStoreLifeCycle implements PrimaryDataStoreLi
 
     private String getAppInstanceName(DataStore dataStore)
     {
+        PrimaryDataStoreInfo primaryDataStoreInfo = (PrimaryDataStoreInfo)datastore;
+
         ArrayList<String> name = new ArrayList();
 
+        long clusterId = primaryDataStoreInfo.getClusterId();
         name.add("CS");
         name.add(dataStore.getName().toString());
-
+        name.add(String.valueOf(clusterId));
         name.add(String.valueOf(dataStore.getId()));
 
         return StringUtils.join("-", name.toArray());
@@ -558,15 +672,14 @@ public class DateraSharedPrimaryDataStoreLifeCycle implements PrimaryDataStoreLi
         try
         {
             storagePoolId = dataStore.getId();
+            cluster = (ClusterVO)this._clusterDao.findById(Long.valueOf(clusterId));
+            clusterId = host.getClusterId().longValue();
 
             appInstanceName = getAppInstanceName(dataStore);
             appInstance = DateraUtil.getDateraAppInstance(conn, appInstanceName);
 
-            Preconditions.checkArgument(appInstance != null);
+            Preconditions.checkArgument(appInstance != null, "appInstance "+ appInstanceName + " was not found!");
 
-            clusterId = host.getClusterId().longValue();
-
-            cluster = (ClusterVO)this._clusterDao.findById(Long.valueOf(clusterId));
 
             lock = GlobalLock.getInternLock(cluster.getUuid());
         }
@@ -594,6 +707,13 @@ public class DateraSharedPrimaryDataStoreLifeCycle implements PrimaryDataStoreLi
             }
         }
         s_logger.debug("Couldn't lock the DB (in grantAccess) on the following string: " + cluster.getUuid());
+        return false;
+    }
+
+    private boolean isDateraSupported(HypervisorType hypervisorType)
+    {
+        if(HypervisorType.VMware.equals(hypervisorType) || HypervisorType.XenServer.equals(hypervisorType))
+            return true;
         return false;
     }
 }

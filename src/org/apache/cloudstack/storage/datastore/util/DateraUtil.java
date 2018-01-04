@@ -91,6 +91,10 @@ public class DateraUtil {
     public static final String NUM_REPLICAS = "numReplicas";
     public static final String VOL_PLACEMENT = "volPlacement";
 
+    public static final String DATASTORE_NAME ="VmwDataStoreName";
+    public static final String IQN ="DateratIqn";
+
+
     public static final String STORAGE_POOL_ID = "DateraStoragePoolId";
     public static final String VOLUME_SIZE = "DateraVolumeSize";
     public static final String VOLUME_ID = "DateraVolumeId";
@@ -101,6 +105,8 @@ public class DateraUtil {
     public static final String INITIATOR_GROUP_PREFIX = "CS-InitiatorGroup";
     public static final String INITIATOR_PREFIX = "CS-Initiator";
     public static final String APPINSTANCE_PREFIX = "CS";
+
+    public static final String LOG_PREFIX = "Datera - ";
 
     private int managementPort;
     private String managementIp;
