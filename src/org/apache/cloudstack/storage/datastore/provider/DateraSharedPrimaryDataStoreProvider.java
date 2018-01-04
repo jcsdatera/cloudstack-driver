@@ -43,7 +43,7 @@ public class DateraSharedPrimaryDataStoreProvider implements PrimaryDataStorePro
 
     @Override
     public String getName() {
-        return DateraUtil.PROVIDER_NAME;
+        return DateraUtil.SHARED_PROVIDER_NAME;
     }
 
     @Override
