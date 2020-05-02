@@ -98,6 +98,7 @@ public class DateraUtil {
     public static final String SNAPSHOT_ID = "DateraSnapshotId";
     public static final String TEMP_VOLUME_ID = "tempVolumeId";
     public static final String IP_POOL = "ipPool";
+    public static final String SNAP_NAME_DELIM = "@";
 
     public static final int MAX_IOPS = 10000; // max IOPS that can be assigned to a volume
 
@@ -566,7 +567,7 @@ public class DateraUtil {
             throws DateraObject.DateraError, UnsupportedEncodingException {
 
         // split the snapshot name to appInstanceName and the snapshot timestamp
-        String[] tokens = snapshotName.split(":");
+        String[] tokens = snapshotName.split(SNAP_NAME_DELIM);
         Preconditions.checkArgument(tokens.length == 2);
 
         // A snapshot is stored in Cloudstack as <AppInstanceName>:<SnapshotTime>
@@ -604,7 +605,7 @@ public class DateraUtil {
             throws DateraObject.DateraError {
 
         // split the snapshot name to appInstanceName and the snapshot timestamp
-        String[] tokens = snapshotName.split(":");
+        String[] tokens = snapshotName.split(SNAP_NAME_DELIM);
         Preconditions.checkArgument(tokens.length == 2);
 
         // A snapshot is stored in Cloudstack as <AppInstanceName>:<SnapshotTime>
@@ -660,7 +661,7 @@ public class DateraUtil {
             String snapshotName) throws DateraObject.DateraError {
 
         // split the snapshot name to appInstanceName and the snapshot timestamp
-        String[] tokens = snapshotName.split(":");
+        String[] tokens = snapshotName.split(SNAP_NAME_DELIM);
         Preconditions.checkArgument(tokens.length == 2);
 
         // A snapshot is stored in Cloudstack as <AppInstanceName>:<SnapshotTime>
