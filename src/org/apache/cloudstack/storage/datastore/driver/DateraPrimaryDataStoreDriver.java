@@ -1315,7 +1315,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     throw new CloudRuntimeException("Unable to take native snapshot for volume " + volumeInfo.getId());
                 }
 
-                String snapshotName = baseAppInstanceName + ":" + volumeSnapshot.getTimestamp();
+                String snapshotName = baseAppInstanceName + DateraUtil.SNAP_NAME_DELIM + volumeSnapshot.getTimestamp();
                 updateSnapshotDetails(snapshotInfo.getId(), baseAppInstanceName, snapshotName, storagePoolId,
                         baseAppInstance.getSize());
 
