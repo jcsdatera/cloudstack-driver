@@ -10,10 +10,10 @@ DATERA CloudStack Driver Repository
      - Capabilities Introduced
      - Supported Datera Product Versions
      - Supported Hypervisors
-   * - 4.11.2
-     - v2.0.2
+   * - 4.11.3
+     - v2.2.0
      - Dynamic Primary Storage
-     - 3.2
+     - 3.2 / 3.3
      - KVM
 
   
@@ -34,17 +34,18 @@ Configuration Options
      - (String) Datera API user name.
    * - ``clusterAdminPassword`` = ``None``
      - (String) Datera API user password.
-   * - ``numReplicas`` = ``2``
+   * - ``numReplicas`` = ``3``
      - (Int) Number of replicas to create a volume.
    * - ``ipPool`` = ``default``
      - (String) Access network IP pool name.
-
+   * - ``volPlacement`` = ``hybrid``
+     - (String) Placement types/policies in Datera ( hybrid | single_flash | all_flash ) 
 
 ===================
 Configuration Steps
 ===================
-1. Deploy CloudStack by following the instructions http://docs.cloudstack.apache.org/projects/cloudstack-installation/en/4.11/
-2. Download Datera CloudStack driver from releases
+1. Deploy CloudStack by following the instructions http://docs.cloudstack.apache.org/en/latest/index.html
+2. Download Datera CloudStack driver from releases: https://github.com/Datera/cloudstack-driver/releases
 3. Save it to:
 
    ``/usr/share/cloudstack-management/lib/``
