@@ -435,7 +435,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         String dataObjectTypeString = dataObject.getType().name(); // TEMPLATE, VOLUME, SNAPSHOT
         String dataObjectTypeBrief;
         dataObjectTypeBrief = org.apache.commons.lang.StringUtils.substring(dataObjectTypeString, 0, 1);
-        name.add(dataObjectTypeBrief); // T, V
+        name.add(dataObjectTypeBrief); // T, V, S
 
         switch (dataObject.getType()) {
         case TEMPLATE:
@@ -458,8 +458,10 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             break;
 
         case SNAPSHOT:
+            SnapshotInfo snapshotInfo = (SnapshotInfo) dataObject;
+            String snapshotName = snapshotInfo.getName();
+            name.add(String.valueOf(snapshotName));
             name.add(dataObject.getUuid()); // 6db58e3f-14c4-45ac-95e9-60e3a00ce7d0
-
         }
 
         String appInstanceName = StringUtils.join("-", name.toArray());
@@ -705,10 +707,11 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
      * @param storagePoolId Primary storage where volume resides
      */
     private void deleteVolume(VolumeInfo volumeInfo, long storagePoolId) {
-
+        s_logger.debug("deleteVolume() called");
         DateraObject.DateraConnection conn = DateraUtil.getDateraConnection(storagePoolId, _storagePoolDetailsDao);
         Long volumeStoragePoolId = volumeInfo.getPoolId();
         long volumeId = volumeInfo.getId();
+        boolean updateFlag = false;
 
         if (volumeStoragePoolId == null) {
             return; // this volume was never assigned to a storage pool, so no SAN volume should
@@ -716,26 +719,44 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         }
 
         try {
-
             // If there are native snapshots on this appInstance, we want to keep it on
             // Datera
             // but remove it from cloudstack
             if (shouldDeleteVolume(volumeId, null)) {
                 DateraUtil.deleteAppInstance(conn, getAppInstanceName(volumeInfo));
             }
+            // Always remove volume details in cloudstack regardless
+            updateFlag = true;
 
-            volumeDetailsDao.removeDetails(volumeId);
-
-            StoragePoolVO storagePool = storagePoolDao.findById(storagePoolId);
-
-            long usedBytes = getUsedBytes(storagePool, volumeId);
-            storagePool.setUsedBytes(usedBytes < 0 ? 0 : usedBytes);
-            storagePoolDao.update(storagePoolId, storagePool);
-
-        } catch (UnsupportedEncodingException | DateraObject.DateraError e) {
-            String errMesg = "Error deleting app instance for Volume : " + volumeInfo.getId();
+        } catch (DateraObject.DateraError e) {
+            String errMesg = "Error deleting app instance for Volume : " + String.valueOf(volumeId);
             s_logger.warn(errMesg, e);
-            throw new CloudRuntimeException(errMesg);
+            if ( e instanceof DateraObject.DateraError && DateraObject.DateraErrorTypes.NotFoundError.equals(e)) {
+                errMesg = "app instance: " + String.valueOf(volumeId) + " no longer exists in Datera!";
+                s_logger.warn(errMesg);
+                updateFlag = true;
+            }
+        } catch (UnsupportedEncodingException e) {
+            String errMesg = "Error deleting app instance for Volume : " + String.valueOf(volumeId);
+            s_logger.warn(errMesg, e);
+            if ( e.toString().equals("anObject")) {
+                throw new CloudRuntimeException(errMesg);
+            }
+        } catch (Exception ex) {
+            throw new CloudRuntimeException(ex);
+
+        } finally {
+            if ( updateFlag ) {
+                s_logger.debug("Removing volume details and updating storagePool used bytes");
+                volumeDetailsDao.removeDetails(volumeId);
+                StoragePoolVO storagePool = storagePoolDao.findById(storagePoolId);
+                long usedBytes = getUsedBytes(storagePool, volumeId);
+                storagePool.setUsedBytes(usedBytes < 0 ? 0 : usedBytes);
+                storagePoolDao.update(storagePoolId, storagePool);
+            } else {
+                s_logger.debug("Skip removing volume details and updating storagePool used bytes");
+
+            }
         }
     }
 
@@ -945,18 +966,24 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
                 appInstance = DateraUtil.cloneAppInstanceFromSnapshot(conn, clonedAppInstanceName, getDescription(volumeInfo),
                         snapshotDetails.getValue(), ipPool);
-
+                // Update maxIops
                 if (volumeInfo.getMaxIops() != null) {
-
                     int totalIops = Math.min(DateraUtil.MAX_IOPS, Ints.checkedCast(volumeInfo.getMaxIops()));
                     DateraUtil.updateAppInstanceIops(conn, clonedAppInstanceName, totalIops);
-                    appInstance = DateraUtil.getAppInstance(conn, clonedAppInstanceName);
                 }
+                // Update placementMode
+                String newPlacementMode = getVolPlacement(storagePoolId);
+                if (newPlacementMode != null) {
+                    DateraUtil.updateAppInstancePlacement(conn, clonedAppInstanceName, newPlacementMode);
+                }
+                appInstance = DateraUtil.getAppInstance(conn, clonedAppInstanceName);
 
                 if (appInstance == null) {
                     throw new CloudRuntimeException("Unable to create an app instance from snapshot "
                             + volumeInfo.getId() + " type " + dataType);
                 }
+                s_logger.debug("Datera - Cloned snapshot " + " to " + clonedAppInstanceName);
+
                 return appInstance;
 
             } else {
@@ -1037,7 +1064,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
         DateraObject.DateraConnection conn = DateraUtil.getDateraConnection(storagePoolId, _storagePoolDetailsDao);
 
-        snapshotDetails = snapshotDetailsDao.findDetail(csSnapshotId, "tempVolume");
+        snapshotDetails = snapshotDetailsDao.findDetail(csSnapshotId, "tempVolume"); //create,delete
 
         if (snapshotDetails != null && snapshotDetails.getValue() != null
                 && snapshotDetails.getValue().equalsIgnoreCase("create")) {
@@ -1053,7 +1080,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         ipPool);
                 DateraUtil.pollAppInstanceAvailable(conn, clonedAppInstanceName);
             } catch (DateraObject.DateraError | UnsupportedEncodingException e) {
-                String errMesg = "Unable to create temp volume " + csSnapshotId + "Error:" + e.getMessage();
+                String errMesg = "Unable to create temp app_instance " + clonedAppInstanceName + " from " + snapshotName + ". Error:" + e.getMessage();
                 s_logger.error(errMesg, e);
                 throw new CloudRuntimeException(errMesg, e);
             }
@@ -1068,12 +1095,18 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         } else if (snapshotDetails != null && snapshotDetails.getValue() != null
                 && snapshotDetails.getValue().equalsIgnoreCase("delete")) {
 
-            snapshotDetails = snapshotDetailsDao.findDetail(csSnapshotId, DateraUtil.VOLUME_ID);
+            snapshotDetails = snapshotDetailsDao.findDetail(csSnapshotId, DateraUtil.TEMP_VOLUME_ID);
+            if ( snapshotDetails == null || snapshotDetails.getValue() == null) {
+                String errMesg = "Unable to get value snapshot_details.tempVolumeId is null, there might be an error during tempVolume creation";
+                s_logger.warn(errMesg);
+                return;
+            }
+            String clonedAppInstanceName = snapshotDetails.getValue();
             try {
-                s_logger.debug("Deleting temp app_instance " + snapshotDetails.getValue());
-                DateraUtil.deleteAppInstance(conn, snapshotDetails.getValue());
+                s_logger.debug("Deleting temp app_instance " + clonedAppInstanceName);
+                DateraUtil.deleteAppInstance(conn, clonedAppInstanceName);
             } catch (UnsupportedEncodingException | DateraObject.DateraError dateraError) {
-                String errMesg = "Error deleting temp volume " + dateraError.getMessage();
+                String errMesg = "Error deleting temp app_instance " + clonedAppInstanceName + dateraError.getMessage();
                 throw new CloudRuntimeException(errMesg, dateraError);
             }
 
@@ -1450,6 +1483,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             throws UnsupportedEncodingException, DateraObject.DateraError {
 
         long csSnapshotId = snapshotInfo.getId();
+        boolean shouldUpdate = false;
 
         try {
             DateraObject.DateraConnection conn = DateraUtil.getDateraConnection(storagePoolId, _storagePoolDetailsDao);
@@ -1485,22 +1519,32 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
                 DateraUtil.deleteAppInstance(conn, appInstanceName);
             }
+            shouldUpdate = true;
 
-            snapshotDetailsDao.removeDetails(csSnapshotId);
-
-            StoragePoolVO storagePool = storagePoolDao.findById(storagePoolId);
-
-            // getUsedBytes(StoragePool) will not include the snapshot to delete because it
-            // has already been deleted by this point
-            long usedBytes = getUsedBytes(storagePool);
-
-            storagePool.setUsedBytes(usedBytes < 0 ? 0 : usedBytes);
-
-            storagePoolDao.update(storagePoolId, storagePool);
+        } catch (DateraObject.DateraError e) {
+            String errMesg = "Error deleting snapshot : " + String.valueOf(csSnapshotId);
+            s_logger.warn(errMesg, e);
+            if ( e instanceof DateraObject.DateraError && DateraObject.DateraErrorTypes.NotFoundError.equals(e)) {
+                errMesg = "snapshot: " + csSnapshotId + " no longer exists in Datera!";
+                s_logger.warn(errMesg);
+                shouldUpdate = true;
+            }
         } catch (Exception ex) {
-            s_logger.debug("Error in 'deleteSnapshot(SnapshotInfo, long)'. CloudStack snapshot ID: " + csSnapshotId,
-                    ex);
-            throw ex;
+                s_logger.debug("Error in 'deleteSnapshot()'. CloudStack snapshot ID: " + csSnapshotId, ex);
+                throw new CloudRuntimeException(ex);
+
+        } finally {
+            if ( shouldUpdate ) {
+                s_logger.debug("Removing snapshot details and updating storagePool used bytes");
+                snapshotDetailsDao.removeDetails(csSnapshotId);
+                StoragePoolVO storagePool = storagePoolDao.findById(storagePoolId);
+
+                // getUsedBytes(StoragePool) will not include the snapshot to delete because it
+                // has already been deleted by this point
+                long usedBytes = getUsedBytes(storagePool);
+                storagePool.setUsedBytes(usedBytes < 0 ? 0 : usedBytes);
+                storagePoolDao.update(storagePoolId, storagePool);
+            }
         }
     }
 
@@ -1534,6 +1578,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             storagePool.setUsedBytes(usedBytes < 0 ? 0 : usedBytes);
 
             storagePoolDao.update(storagePoolId, storagePool);
+
         } catch (Exception ex) {
             s_logger.debug("Failed to delete template volume. CloudStack template ID: " + templateInfo.getId(), ex);
 
@@ -1694,33 +1739,34 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
      * using a native snapshot and we want to create a template out of the snapshot
      *
      * @param csSnapshotId   Source snasphot
-     * @param tempVolumeName temp volume app instance on Datera
+     * @param tempVolumeName temp volume app instance name on Datera
      */
     private void addTempVolumeToDb(long csSnapshotId, String tempVolumeName) {
         SnapshotDetailsVO snapshotDetails = snapshotDetailsDao.findDetail(csSnapshotId, DateraUtil.VOLUME_ID);
+        s_logger.debug("addTempVolumeToDb()");
 
         if (snapshotDetails == null || snapshotDetails.getValue() == null) {
             throw new CloudRuntimeException(
-                    "'addTempVolumeId' should not be invoked unless " + DateraUtil.VOLUME_ID + " exists.");
+                    "'addTempVolumeToDb()' should not be invoked unless " + DateraUtil.VOLUME_ID + " exists.");
         }
 
-        String originalVolumeId = snapshotDetails.getValue();
-
-        handleSnapshotDetails(csSnapshotId, DateraUtil.TEMP_VOLUME_ID, originalVolumeId);
-        handleSnapshotDetails(csSnapshotId, DateraUtil.VOLUME_ID, tempVolumeName);
+        handleSnapshotDetails(csSnapshotId, DateraUtil.TEMP_VOLUME_ID, tempVolumeName); //tempVolumeId | CS-S-12-12345678ab-cdef-sddg-kkkk-1234567890
     }
 
+    /**
+     * Update the snapshot_details.DateraVolumId with the original app_instance name
+     * Remove the db entry of snapshot_details.tempVolumeId
+     *
+     * @param csSnapshotId   Source snasphot
+     */
     private void removeTempVolumeFromDb(long csSnapshotId) {
         SnapshotDetailsVO snapshotDetails = snapshotDetailsDao.findDetail(csSnapshotId, DateraUtil.TEMP_VOLUME_ID);
+        s_logger.debug("removeTempVolumeFromDb()");
 
         if (snapshotDetails == null || snapshotDetails.getValue() == null) {
             throw new CloudRuntimeException(
-                    "'removeTempVolumeId' should not be invoked unless " + DateraUtil.TEMP_VOLUME_ID + " exists.");
+                    "'removeTempVolumeFromDb()' should not be invoked unless " + DateraUtil.TEMP_VOLUME_ID + " exists.");
         }
-
-        String originalVolumeId = snapshotDetails.getValue();
-
-        handleSnapshotDetails(csSnapshotId, DateraUtil.VOLUME_ID, originalVolumeId);
 
         snapshotDetailsDao.remove(snapshotDetails.getId());
     }
