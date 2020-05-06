@@ -98,7 +98,7 @@ public class DateraUtil {
     public static final String SNAPSHOT_ID = "DateraSnapshotId";
     public static final String TEMP_VOLUME_ID = "tempVolumeId";
     public static final String IP_POOL = "ipPool";
-    public static final String SNAP_NAME_DELIM = "@";
+    public static final String SNAP_NAME_DELIM = ":";
 
     public static final int MAX_IOPS = 10000; // max IOPS that can be assigned to a volume
 
@@ -566,13 +566,12 @@ public class DateraUtil {
             String newAppInstanceName, String desc, String snapshotName, String ipPool)
             throws DateraObject.DateraError, UnsupportedEncodingException {
 
-        // split the snapshot name to appInstanceName and the snapshot timestamp
-        String[] tokens = snapshotName.split(SNAP_NAME_DELIM);
-        Preconditions.checkArgument(tokens.length == 2);
+        ArrayList<String> snapshotNameArray= processSnapshotName(snapshotName);
+        Preconditions.checkArgument((snapshotNameArray.size() == 2), "Failed to parse snapshotName:"+snapshotName);
 
         // A snapshot is stored in Cloudstack as <AppInstanceName>:<SnapshotTime>
-        String appInstanceName = tokens[0];
-        String snapshotTime = tokens[1];
+        String appInstanceName = snapshotNameArray.get(0);
+        String snapshotTime = snapshotNameArray.get(1);
 
         // get the snapshot from Datera
         HttpGet getSnasphotReq = new HttpGet(
@@ -604,13 +603,12 @@ public class DateraUtil {
     public static void deleteVolumeSnapshot(DateraObject.DateraConnection conn, String snapshotName)
             throws DateraObject.DateraError {
 
-        // split the snapshot name to appInstanceName and the snapshot timestamp
-        String[] tokens = snapshotName.split(SNAP_NAME_DELIM);
-        Preconditions.checkArgument(tokens.length == 2);
+        ArrayList<String> snapshotNameArray= processSnapshotName(snapshotName);
+        Preconditions.checkArgument((snapshotNameArray.size() == 2), "Failed to parse snapshotName:"+snapshotName);
 
         // A snapshot is stored in Cloudstack as <AppInstanceName>:<SnapshotTime>
-        String appInstanceName = tokens[0];
-        String snapshotTime = tokens[1];
+        String appInstanceName = snapshotNameArray.get(0);
+        String snapshotTime = snapshotNameArray.get(1);
 
         HttpDelete deleteSnapshotReq = new HttpDelete(
                 generateApiUrl("app_instances", appInstanceName, "storage_instances", DateraObject.DEFAULT_STORAGE_NAME,
@@ -660,13 +658,12 @@ public class DateraUtil {
     public static DateraObject.AppInstance restoreVolumeSnapshot(DateraObject.DateraConnection conn,
             String snapshotName) throws DateraObject.DateraError {
 
-        // split the snapshot name to appInstanceName and the snapshot timestamp
-        String[] tokens = snapshotName.split(SNAP_NAME_DELIM);
-        Preconditions.checkArgument(tokens.length == 2);
+        ArrayList<String> snapshotNameArray= processSnapshotName(snapshotName);
+        Preconditions.checkArgument((snapshotNameArray.size() == 2), "Failed to parse snapshotName:"+snapshotName);
 
         // A snapshot is stored in Cloudstack as <AppInstanceName>:<SnapshotTime>
-        String appInstanceName = tokens[0];
-        String snapshotTime = tokens[1];
+        String appInstanceName = snapshotNameArray.get(0);
+        String snapshotTime = snapshotNameArray.get(1);
 
         HttpPut restoreSnapshotReq = new HttpPut(generateApiUrl("app_instances", appInstanceName, "storage_instances",
                 DateraObject.DEFAULT_STORAGE_NAME, "volumes", DateraObject.DEFAULT_VOLUME_NAME));
@@ -1035,6 +1032,37 @@ public class DateraUtil {
         String uuid = String.valueOf(uid.randomUUID()).substring(0, length);
 
         return uuid;
+    }
+
+    /**
+     * Tokenize snapshot name
+     * Support v2, v2.1, v2.2
+     * @param snapshotName
+     * @return ArrayList (AppInstanceName, Timestamp)
+     */
+    private static ArrayList<String> processSnapshotName(String snapshotName) {
+        ArrayList<String> snapshotNameArray = new ArrayList<String>();
+
+        // split the snapshot name to appInstanceName and the snapshot timestamp
+        String[] tokens = snapshotName.split(SNAP_NAME_DELIM);
+        if (tokens.length > 2){
+            // API v2.1 v2.2 snapshot name
+            // CS-V-DATA-3-6bcde71b-a76d-428d-b604-1b14e08eafc0:2020-05-02T01:27:29+00:00
+            String[] tokenTimestamp = Arrays.copyOfRange(tokens, 1, tokens.length);
+            String timestamp = String.join(SNAP_NAME_DELIM, tokenTimestamp);
+            snapshotNameArray.add(tokens[0]); //CS-V-DATA-3-6bcde71b-a76d-428d-b604-1b14e08eafc0
+            snapshotNameArray.add(timestamp); //2020-05-02T01:27:29+00:00
+        } else if (tokens.length == 2) {
+            // API v2 snapshot name
+            // CS-V-DATA-3-6bcde71b-a76d-428d-b604-1b14e08eafc0:1588408049
+            snapshotNameArray.add(tokens[0]); //CS-V-DATA-3-6bcde71b-a76d-428d-b604-1b14e08eafc0
+            snapshotNameArray.add(tokens[1]); //1588408049
+        } else {
+            String errMesg = "Invalid snapshotName :" + String.valueOf(snapshotName);
+            s_logger.warn(errMesg);
+            throw new CloudRuntimeException(errMesg);
+        }
+        return snapshotNameArray;
     }
 
 }
