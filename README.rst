@@ -39,7 +39,7 @@ Configuration Options
    * - ``ipPool`` = ``default``
      - (String) Access network IP pool name.
    * - ``volPlacement`` = ``hybrid``
-     - (String) Placement types/policies in Datera ( hybrid | single_flash | all_flash ) 
+     - (String) Placement modes ( hybrid | single_flash | all_flash ) 
 
 ===================
 Configuration Steps
